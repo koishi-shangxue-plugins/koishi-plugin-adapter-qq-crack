@@ -5,7 +5,7 @@ import { QQGuildBot } from './bot/guild';
 import { logDebug } from './logger';
 import { extractMarkdownText, parseQQMarkdownElement, QQMarkdownRequest } from './markdown';
 import { applyAutoStream, clearAutoStream, updateAutoStream } from './stream';
-import { fromPrivateChannelId } from './channel';
+import { fromPrivateChannelId, isPrivateChannelId } from './channel';
 import { registerMessageReference, resolveMessageReference } from './reference';
 import { parseQQArkElement } from './ark';
 import { chunkedUpload } from './chunked-upload';
@@ -399,9 +399,11 @@ export class QQMessageEncoder<C extends Context = Context> extends MessageEncode
     applyAutoStream(this.options.session, data, shouldAutoStream);
     const session = this.bot.session();
     session.type = 'send';
+    // 主动发送时可能没有 isDirect，需要同时根据 private: 频道 ID 判断。
+    const isDirect = this.session.isDirect || isPrivateChannelId(this.session.channelId);
     const sendRequest = (payload: QQ.Message.Request) =>
     {
-      return this.session.isDirect
+      return isDirect
         ? this.bot.internal.sendPrivateMessage(fromPrivateChannelId(this.session.channelId), payload)
         : this.bot.internal.sendMessage(this.session.channelId, payload);
     };
@@ -500,7 +502,10 @@ export class QQMessageEncoder<C extends Context = Context> extends MessageEncode
     else if (type === 'file') file_type = QQ.Message.File.Type.FILE;
     else return;
 
-    const targetId = this.session.isDirect ? this.options.session.userId : this.session.channelId;
+    const isDirect = this.session.isDirect || isPrivateChannelId(this.session.channelId);
+    const targetId = isDirect
+      ? fromPrivateChannelId(this.session.channelId) || this.options.session.userId
+      : this.session.channelId;
     let res: QQ.Message.File.Response;
 
     try
@@ -530,11 +535,11 @@ export class QQMessageEncoder<C extends Context = Context> extends MessageEncode
         }
         if (fileName === 'file') fileName = `file_${Date.now()}`;
 
-        res = await chunkedUpload(this.bot, targetId, this.session.isDirect, fileBuffer, fileName, file_type);
+        res = await chunkedUpload(this.bot, targetId, isDirect, fileBuffer, fileName, file_type);
       } else
       {
         const data: QQ.Message.File.Request = { file_type, srv_send_msg: false, url };
-        if (this.session.isDirect)
+        if (isDirect)
         {
           res = await this.bot.internal.sendFilePrivate(targetId, data);
         } else

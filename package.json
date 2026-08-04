@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-adapter-qq-crack",
   "description": "QQ Adapter for q.qq.com",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
