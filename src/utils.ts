@@ -1,7 +1,7 @@
 import { Bot, Context, h, Session, Universal } from 'koishi';
 import * as QQ from './types';
 import { QQBot } from './bot';
-import { patchSessionBotRole, patchSessionUserName, scheduleUserNameWrite } from './user';
+import { patchSessionUserName, scheduleUserNameWrite } from './user';
 import { toPrivateChannelId } from './channel';
 import
 {
@@ -573,9 +573,6 @@ export async function adaptSession<C extends Context = Context>(bot: QQBot<C>, i
   {
     return;
   }
-  await Promise.all([
-    patchSessionUserName(bot, session),
-    patchSessionBotRole(bot, session),
-  ]);
+  await patchSessionUserName(bot, session);
   return session;
 }

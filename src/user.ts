@@ -1,7 +1,6 @@
-import { Session, Universal } from 'koishi';
+import { Session } from 'koishi';
 import { QQBot } from './bot';
 import { BaseConfig } from './config';
-import { logDebug } from './logger';
 
 const USERNAME_CACHE_TTL = 10 * 60 * 1000;
 const USERNAME_WRITE_DELAY = 1000;
@@ -16,11 +15,6 @@ interface PendingUserNameWrite
 {
   name: string;
   dispose: () => void;
-}
-
-interface BotUserWithRole extends Universal.User
-{
-  role?: string;
 }
 
 const userNameCache = new Map<string, CachedUserName>();
@@ -185,20 +179,5 @@ export async function patchSessionUserName(bot: QQBot, session: Session)
   if (storedName)
   {
     ensureSessionUser(session).name = storedName;
-  }
-}
-
-export async function patchSessionBotRole(bot: QQBot, session: Session)
-{
-  if (session.bot !== bot || !session.guildId) return;
-  session.bot.user ??= { id: session.bot.selfId };
-  try
-  {
-    const state = await bot.internal.getBotGroupState(session.guildId);
-    if (!state?.member_role) return;
-    (session.bot.user as BotUserWithRole).role = state.member_role;
-  } catch (error)
-  {
-    logDebug(bot, 'getBotGroupState failed: %o', error);
   }
 }

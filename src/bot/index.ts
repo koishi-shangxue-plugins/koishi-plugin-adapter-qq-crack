@@ -6,6 +6,7 @@ import { GroupInternal } from '../internal';
 import { HttpServer } from '../http';
 import { decodeGroupChannel, decodeGroupGuild, decodeUser } from '../utils';
 import * as AdapterConfig from '../config';
+import * as QQ from '../types';
 import { fromPrivateChannelId, isPrivateChannelId, toPrivateChannelId } from '../channel';
 
 interface JoinRequestCache
@@ -178,6 +179,17 @@ export class QQBot<C extends Context = Context, T extends QQBot.Config = QQBot.C
       name: userId,
       avatar: `https://q.qlogo.cn/qqapp/${appid}/${userId}/640`,
     };
+  }
+
+  async refreshBotGroupState(guildId: string): Promise<QQ.BotGroupState>
+  {
+    const state = await this.internal.getBotGroupState(guildId);
+    if (state?.member_role)
+    {
+      this.user ??= { id: this.selfId };
+      (this.user as Universal.User & { role?: string }).role = state.member_role;
+    }
+    return state;
   }
 
   async createDirectChannel(id: string)
