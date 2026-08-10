@@ -33,6 +33,14 @@
 
 如果你不确定，建议直接使用默认值。
 
+本次新增的群相关事件统一由 `GROUP_AND_C2C_EVENT` 意图位控制，包括：
+
+- `GROUP_JOIN_REQUEST`
+- `GROUP_MSG_RECEIVE`
+- `GROUP_MSG_REJECT`
+
+`GROUP_AND_C2C_EVENT` 的值为 `1 << 25`，已包含在默认配置中。
+
 ### retryWhen
 
 - 类型：`number[]`

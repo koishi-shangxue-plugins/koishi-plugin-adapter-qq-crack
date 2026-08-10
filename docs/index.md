@@ -16,6 +16,9 @@
 - 群聊、私聊、频道场景的 `channelId` 约定
 - 原生 Markdown、模板 Markdown、按钮模板 JSON 的消息发送方式
 - 纯文本自动流式开关与 `stream` 的两种写法
+- 群组基础信息、机器人群内状态、群成员禁言
+- 入群申请事件与审批、入群自动审批策略
+- 群消息接收开启/关闭事件
 
 ## 当前适配器的重点特性
 
@@ -25,6 +28,8 @@
 - 支持 `private:${userId}` 私聊频道 ID 方案
 - 支持将 WebSocket 消息中的用户名写回 Koishi 数据库并回填到 `session.username`
 - 心跳僵死时会立即重连，尽量缩短断开时间
+- 支持 `bot.refreshBotGroupState()` 手动刷新机器人群内角色
+- 支持 `guild-member-request`、`group-msg-receive`、`group-msg-reject` 事件
 
 ## 仓库与反馈
 
