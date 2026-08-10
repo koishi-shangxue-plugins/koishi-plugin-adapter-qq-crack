@@ -18,6 +18,16 @@
 - 支持文件上传，富媒体文件类型选择 `type=4`
 - 支持私聊引用消息
 
+## 近期新增
+
+- 群组基础信息：`bot.getGuild(guildId)`、`bot.getChannel(channelId)`、`bot.getChannelList(guildId)`
+- 机器人群内状态：`bot.refreshBotGroupState(guildId)`，手动请求并写入 `bot.user.role`
+- 群成员禁言：`bot.muteGuildMember(guildId, userId, duration)`，单位为毫秒，传 `0` 解除禁言
+- 入群申请事件：`guild-member-request`，可通过 `session.bot.handleGuildMemberRequest(messageId, approve, comment?)` 同意或拒绝
+- 群消息接收事件：`group-msg-receive`、`group-msg-reject`
+- 新增内部 API：入群申请列表与审批、群禁言设置、入群自动审批策略与白名单管理
+- 配置意图位更新为 `GROUP_AND_C2C_EVENT`，覆盖入群申请与群消息接收相关事件
+
 ## 使用示例
 
 ### 原生按钮
