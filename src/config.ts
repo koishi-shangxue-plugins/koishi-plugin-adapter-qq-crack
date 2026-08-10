@@ -67,7 +67,7 @@ export const Config: Schema<Config> = Schema.intersect([
   ]),
   Schema.object({
     sandbox: Schema.boolean().description('是否开启沙箱模式。').default(false),
-    endpoint: Schema.string().role('link').description('要连接的服务器地址。').default('https://api.sgroup.qq.com/'),
+    endpoint: Schema.string().role('link').description('要连接的服务器地址。').default('https://api.bot.qq.com/'),
     manualAcknowledge: Schema.boolean().description('手动响应回调消息。').default(false),
     gatewayUrl: Schema.string().role('link').description('覆盖 WebSocket 地址。'),
     userInfoApi: Schema.string().role("link").default("https://oiapi.net/api/Openid").description("API 接口地址"),
