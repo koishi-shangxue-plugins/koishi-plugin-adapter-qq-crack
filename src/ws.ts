@@ -23,7 +23,7 @@ export class WsClient<C extends Context = Context> extends Adapter.WsClient<C, Q
         {
           const gatewayUrl = new URL((await this.bot.internal.getGateway()).url);
           // 使用配置的 endpoint 主机名，兼容 api.sgroup.qq.com 与 api.bot.qq.com
-          gatewayUrl.host = new URL(this.bot.http.config.endpoint).host;
+          gatewayUrl.host = new URL(this.bot.http.config.baseURL).host;
           return gatewayUrl.toString();
         })();
       logDebug(this.bot, 'url: %s', url);
