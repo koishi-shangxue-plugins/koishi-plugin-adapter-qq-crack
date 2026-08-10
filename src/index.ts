@@ -1,4 +1,4 @@
-import { Context } from 'koishi';
+import { Context, Session } from 'koishi';
 import * as QQ from './types';
 import { QQBot } from './bot';
 import { GroupInternal, GuildInternal } from './internal';
@@ -49,5 +49,9 @@ declare module '@satorijs/core' {
 }
 
 declare module 'cordis' {
-  interface Events extends QQEvents { }
+  interface Events extends QQEvents
+  {
+    'group-msg-receive'(session: Session): void;
+    'group-msg-reject'(session: Session): void;
+  }
 }

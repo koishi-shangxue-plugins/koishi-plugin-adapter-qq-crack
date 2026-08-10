@@ -1,7 +1,7 @@
 import { Bot, Context, h, Session, Universal } from 'koishi';
 import * as QQ from './types';
 import { QQBot } from './bot';
-import { patchSessionUserName, scheduleUserNameWrite } from './user';
+import { patchSessionBotRole, patchSessionUserName, scheduleUserNameWrite } from './user';
 import { toPrivateChannelId } from './channel';
 import
 {
@@ -26,6 +26,17 @@ export const decodeChannel = (channel: QQ.Channel): Universal.Channel => ({
         : Universal.Channel.Type.TEXT,
   parentId: channel.parent_id,
   position: channel.position,
+});
+
+export const decodeGroupChannel = (group: QQ.GroupInfo): Universal.Channel => ({
+  id: group.group_openid,
+  name: group.group_name,
+  type: Universal.Channel.Type.TEXT,
+});
+
+export const decodeGroupGuild = (group: QQ.GroupInfo): Universal.Guild => ({
+  id: group.group_openid,
+  name: group.group_name,
 });
 
 export const decodeUser = (user: QQ.User): Universal.User => ({
@@ -363,7 +374,8 @@ export async function adaptSession<C extends Context = Context>(bot: QQBot<C>, i
   let session = bot.session();
 
   if (!['GROUP_AT_MESSAGE_CREATE', 'GROUP_MESSAGE_CREATE', 'GROUP_MEMBER_ADD', 'GROUP_MEMBER_UPDATE', 'GROUP_MEMBER_REMOVE',
-    'C2C_MESSAGE_CREATE', 'FRIEND_ADD', 'FRIEND_DEL', 'GROUP_ADD_ROBOT', 'GROUP_DEL_ROBOT', 'INTERACTION_CREATE'].includes(input.t))
+    'C2C_MESSAGE_CREATE', 'FRIEND_ADD', 'FRIEND_DEL', 'GROUP_ADD_ROBOT', 'GROUP_DEL_ROBOT', 'INTERACTION_CREATE',
+    'GROUP_JOIN_REQUEST', 'GROUP_MSG_RECEIVE', 'GROUP_MSG_REJECT'].includes(input.t))
   {
     session = bot.guildBot.session();
     session.setInternal(bot.guildBot.platform, input);
@@ -468,6 +480,40 @@ export async function adaptSession<C extends Context = Context>(bot: QQBot<C>, i
     session.timestamp = input.d.timestamp * 1000;
     session.guildId = input.d.group_openid;
     session.operatorId = input.d.op_member_openid;
+  } else if (input.t === 'GROUP_MSG_RECEIVE' || input.t === 'GROUP_MSG_REJECT')
+  {
+    session.type = {
+      GROUP_MSG_RECEIVE: 'group-msg-receive',
+      GROUP_MSG_REJECT: 'group-msg-reject',
+    }[input.t];
+    session.timestamp = input.d.timestamp * 1000;
+    session.guildId = input.d.group_openid;
+    session.channelId = input.d.group_openid;
+    session.isDirect = false;
+    session.operatorId = input.d.op_member_openid;
+  } else if (input.t === 'GROUP_JOIN_REQUEST')
+  {
+    session.type = 'guild-member-request';
+    session.timestamp = input.d.timestamp
+      ? input.d.timestamp * 1000
+      : new Date(input.d.apply_at).valueOf();
+    session.guildId = input.d.group_openid;
+    session.channelId = input.d.group_openid;
+    session.isDirect = false;
+    session.userId = input.d.member_openid;
+    session.messageId = input.d.join_request_id;
+    session.operatorId = input.d.op_member_openid;
+    session.content = input.d.verify_info?.verify_message
+      ?? input.d.verify_info?.review_qa_list?.map(qa => `${qa.question}: ${qa.answer}`).join('\n')
+      ?? '';
+    session.event.user = {
+      id: input.d.member_openid,
+      name: input.d.username,
+    };
+    session.event.guild = {
+      id: input.d.group_openid,
+    };
+    bot.registerJoinRequest(input.d.group_openid, input.d.member_openid, input.d.join_request_id);
   } else if (input.t === 'INTERACTION_CREATE')
   {
     session.type = 'interaction/button';
@@ -527,6 +573,9 @@ export async function adaptSession<C extends Context = Context>(bot: QQBot<C>, i
   {
     return;
   }
-  await patchSessionUserName(bot, session);
+  await Promise.all([
+    patchSessionUserName(bot, session),
+    patchSessionBotRole(bot, session),
+  ]);
   return session;
 }

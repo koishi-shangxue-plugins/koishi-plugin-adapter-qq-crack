@@ -1,5 +1,6 @@
 import * as QQ from '../types';
 import { GroupInternal } from '.';
+import type { QQBot } from '../bot';
 
 declare module './internal' {
   interface GroupInternal
@@ -21,6 +22,24 @@ declare module './internal' {
     getGatewayBot(): Promise<QQ.GetGatewayBotResponse>;
     deleteMessage(openid: string, message_id: string): Promise<any>;
     deletePrivateMessage(userid: string, message_id: string): Promise<any>;
+    getGroupInfo(group_openid: string): Promise<QQ.GroupInfo>;
+    getBotGroupState(group_openid: string): Promise<QQ.BotGroupState>;
+    getJoinRequestList(group_openid: string, params?: Partial<{
+      cursor: string;
+      limit: number;
+    }>): Promise<QQ.JoinRequestList>;
+    approveJoinRequest(group_openid: string, member_openid: string, data: QQ.ApprovalJoinRequestRequest): Promise<{}>;
+    getRestrictChatSetting(group_openid: string): Promise<QQ.RestrictChatSetting>;
+    setRestrictChatSetting(group_openid: string, data: QQ.SetRestrictChatSettingRequest): Promise<{}>;
+    getJoinApprovalStrategyList(params?: Partial<{
+      cursor: string;
+      limit: number;
+    }>): Promise<QQ.JoinApprovalStrategyList>;
+    createJoinApprovalStrategy(data: QQ.CreateJoinApprovalStrategyRequest): Promise<QQ.CreateJoinApprovalStrategyResponse>;
+    modifyJoinApprovalStrategy(strategy_id: string, data: QQ.ModifyJoinApprovalStrategyRequest): Promise<QQ.ModifyJoinApprovalStrategyResponse>;
+    deleteJoinApprovalStrategy(strategy_id: string): Promise<{}>;
+    executeJoinApprovalStrategy(strategy_id: string): Promise<{}>;
+    modifyJoinApprovalStrategyWhitelist(strategy_id: string, data: QQ.ModifyJoinApprovalStrategyWhitelistRequest): Promise<QQ.ModifyJoinApprovalStrategyWhitelistResponse>;
   }
 }
 
@@ -61,6 +80,36 @@ GroupInternal.define(false, {
   '/gateway/bot': {
     GET: 'getGatewayBot',
   },
+  '/v2/groups/{group.openid}/info': {
+    GET: 'getGroupInfo',
+  },
+  '/v2/groups/{group.openid}/bot_state': {
+    GET: 'getBotGroupState',
+  },
+  '/v2/groups/{group.openid}/join_request_list': {
+    GET: 'getJoinRequestList',
+  },
+  '/v2/groups/{group.openid}/approval_join_request/{member.openid}': {
+    POST: 'approveJoinRequest',
+  },
+  '/v2/groups/{group.openid}/restrict_chat_setting': {
+    GET: 'getRestrictChatSetting',
+    POST: 'setRestrictChatSetting',
+  },
+  '/v2/groups/join_approval_strategy': {
+    GET: 'getJoinApprovalStrategyList',
+    POST: 'createJoinApprovalStrategy',
+  },
+  '/v2/groups/join_approval_strategy/{strategy.id}': {
+    PATCH: 'modifyJoinApprovalStrategy',
+    DELETE: 'deleteJoinApprovalStrategy',
+  },
+  '/v2/groups/join_approval_strategy/{strategy.id}/execute': {
+    POST: 'executeJoinApprovalStrategy',
+  },
+  '/v2/groups/join_approval_strategy/{strategy.id}/whitelist_users': {
+    POST: 'modifyJoinApprovalStrategyWhitelist',
+  },
 });
 
 // fxxk tencent
@@ -69,3 +118,20 @@ GroupInternal.define(false, {
     PUT: 'acknowledgeInteraction',
   },
 }, { responseType: 'text' });
+
+const originalGetJoinRequestList = GroupInternal.prototype.getJoinRequestList;
+
+// 拉取申请列表时同步登记，保证后续可以直接用 join_request_id 调用通用审批接口
+GroupInternal.prototype.getJoinRequestList = async function (this: GroupInternal, group_openid: string, params?: Partial<{
+  cursor: string;
+  limit: number;
+}>)
+{
+  const result = await originalGetJoinRequestList.call(this, group_openid, params);
+  const bot = this.getBot() as QQBot;
+  for (const item of result.list ?? [])
+  {
+    bot.registerJoinRequest(group_openid, item.member_openid, item.join_request_id);
+  }
+  return result;
+};

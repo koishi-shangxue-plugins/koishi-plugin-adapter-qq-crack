@@ -26,6 +26,11 @@ export class Internal
 {
   constructor(private bot: Bot, private http: () => HTTP) { }
 
+  getBot(): Bot
+  {
+    return this.bot;
+  }
+
   static define(isGuild: boolean, routes: Dict<Partial<Record<HTTP.Method, string | string[]>>>, preset?: HTTP.RequestConfig)
   {
     for (const path in routes)

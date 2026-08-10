@@ -55,8 +55,11 @@ export enum Intents
   /**
    * - C2C_MESSAGE_CREATE 用户在单聊发送消息给机器人
    * - GROUP_AT_MESSAGE_CREATE 用户在群聊 @ 机器人发送消息
-   */
-  USER_MESSAGE = 1 << 25,
+   * - GROUP_MSG_RECEIVE 群聊消息接收开启
+   * - GROUP_MSG_REJECT 群聊消息接收关闭
+   * - GROUP_JOIN_REQUEST 用户申请加群
+  */
+  GROUP_AND_C2C_EVENT = 1 << 25,
   /**
    * - INTERACTION_CREATE 互动事件创建时
    */
@@ -176,6 +179,7 @@ export interface GatewayEvents
   GROUP_AT_MESSAGE_CREATE: UserMessage;
   GROUP_MESSAGE_CREATE: UserMessage;
   INTERACTION_CREATE: Interaction;
+  GROUP_JOIN_REQUEST: GroupJoinRequestEvent;
   GROUP_ADD_ROBOT: GroupEvent;
   GROUP_DEL_ROBOT: GroupEvent;
   GROUP_MSG_REJECT: GroupEvent;
@@ -1488,6 +1492,208 @@ export interface UserEvent
 {
   timestamp: number;
   openid: string;
+}
+
+export interface GroupInfo
+{
+  group_openid: string;
+  group_name: string;
+  group_finger_memo: string;
+  group_class_text: string;
+  group_tags: string[];
+  group_member_num: number;
+}
+
+export interface BotGroupState
+{
+  member_openid: string;
+  joined_at: string;
+  allow_proactive_msg: boolean;
+  recv_msg_setting: 'all' | 'only_mention' | 'mention_and_context';
+  member_role: 'member' | 'owner' | 'admin';
+}
+
+export interface JoinRequestReviewQA
+{
+  question: string;
+  answer: string;
+}
+
+export interface JoinRequestVerifyInfo
+{
+  method: 'verify_message' | 'admin_review_qa';
+  verify_message?: string;
+  review_qa_list?: JoinRequestReviewQA[];
+}
+
+export interface JoinRequestAutoApproved
+{
+  strategy_id: string;
+}
+
+export interface JoinRequest
+{
+  join_request_id: string;
+  risk_tips?: string;
+  union_openid?: string;
+  member_openid: string;
+  username: string;
+  apply_at: string;
+  apply_source: 'self_apply' | 'invited';
+  invited_by?: string;
+  bot?: boolean;
+  verify_info?: JoinRequestVerifyInfo;
+  auto_approved?: JoinRequestAutoApproved;
+}
+
+export interface JoinRequestList
+{
+  list: JoinRequest[];
+  next_cursor: string;
+}
+
+export interface GroupJoinRequestEvent extends Omit<GroupEvent, 'timestamp' | 'op_member_openid'>
+{
+  timestamp?: number;
+  op_member_openid?: string;
+  join_request_id: string;
+  risk_tips?: string;
+  union_openid?: string;
+  member_openid: string;
+  username: string;
+  apply_at: string;
+  apply_source: 'self_apply' | 'invited';
+  invited_by?: string;
+  bot?: boolean;
+  verify_info?: JoinRequestVerifyInfo;
+  auto_approved?: JoinRequestAutoApproved;
+}
+
+export interface ApprovalJoinRequestRequest
+{
+  op: 'approve' | 'decline';
+  join_request_id: string;
+  reject_reason?: string;
+  add_to_member_blacklist?: boolean;
+}
+
+export interface MuteScheduleRule
+{
+  task_id: string;
+  start_at: string;
+  end_at: string;
+  enabled: boolean;
+}
+
+export interface MuteRecurringRule
+{
+  task_id: string;
+  weekdays: number[];
+  start_time: string;
+  end_time: string;
+  enabled: boolean;
+}
+
+export interface GlobalMuteRule
+{
+  mode: 'none' | 'always' | 'schedule';
+  schedule_rules?: MuteScheduleRule[];
+  recurring_rules?: MuteRecurringRule[];
+}
+
+export interface MemberMuteState
+{
+  member_openid: string;
+  mute_expire_at: string;
+  username?: string;
+  union_openid?: string;
+}
+
+export interface RestrictChatSetting
+{
+  global_rule?: GlobalMuteRule;
+  members?: MemberMuteState[];
+}
+
+export interface SetMemberMuteState
+{
+  op: 'add' | 'update' | 'del';
+  member_openid: string;
+  mute_expire_at?: string;
+}
+
+export interface SetRestrictChatSettingRequest
+{
+  members: SetMemberMuteState[];
+}
+
+export interface JoinApprovalStrategy
+{
+  strategy_id: string;
+  group_openids?: string[];
+  group_ids?: string[];
+  whitelist_user_count: number;
+  is_enable: 'on' | 'off';
+  expire_at: string;
+  created_at: string;
+  updated_at: string;
+  remark?: string;
+}
+
+export interface JoinApprovalStrategyList
+{
+  strategies: JoinApprovalStrategy[];
+  next_cursor: string;
+}
+
+export interface CreateJoinApprovalStrategyRequest
+{
+  group_openids?: string[];
+  group_ids?: string[];
+  is_enable?: 'on' | 'off';
+  expire_at?: string;
+  remark?: string;
+}
+
+export interface CreateJoinApprovalStrategyResponse
+{
+  strategy_id: string;
+  is_enable: 'on' | 'off';
+  expire_at: string;
+}
+
+export interface JoinApprovalStrategyGroupAction
+{
+  op: 'add' | 'del';
+  group_openids?: string[];
+  group_ids?: string[];
+}
+
+export interface ModifyJoinApprovalStrategyRequest
+{
+  is_enable?: 'on' | 'off';
+  expire_at?: string;
+  group_action?: JoinApprovalStrategyGroupAction;
+  remark?: string;
+}
+
+export interface ModifyJoinApprovalStrategyResponse
+{
+  is_enable: 'on' | 'off';
+  expire_at: string;
+}
+
+export interface ModifyJoinApprovalStrategyWhitelistRequest
+{
+  op: 'add' | 'del';
+  whitelist_users: string[];
+}
+
+export interface ModifyJoinApprovalStrategyWhitelistResponse
+{
+  strategy_id: string;
+  whitelist_user_count: number;
+  updated_at: string;
 }
 
 export interface MessageKeyboard

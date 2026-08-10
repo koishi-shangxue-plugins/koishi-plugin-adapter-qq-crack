@@ -4,9 +4,15 @@ import { QQGuildBot } from './guild';
 import { QQMessageEncoder } from '../message';
 import { GroupInternal } from '../internal';
 import { HttpServer } from '../http';
-import { decodeUser } from '../utils';
+import { decodeGroupChannel, decodeGroupGuild, decodeUser } from '../utils';
 import * as AdapterConfig from '../config';
 import { fromPrivateChannelId, isPrivateChannelId, toPrivateChannelId } from '../channel';
+
+interface JoinRequestCache
+{
+  groupOpenid: string;
+  memberOpenid: string;
+}
 
 interface GetAppAccessTokenResult
 {
@@ -30,6 +36,7 @@ export class QQBot<C extends Context = Context, T extends QQBot.Config = QQBot.C
 
   private _token?: string;
   private _disposeTokenRefresh?: () => void;
+  private joinRequestMap = new Map<string, JoinRequestCache>();
 
   constructor(ctx: C, config: T)
   {
@@ -71,6 +78,7 @@ export class QQBot<C extends Context = Context, T extends QQBot.Config = QQBot.C
   async stop()
   {
     this._disposeTokenRefresh?.();
+    this.joinRequestMap.clear();
     if (this.guildBot)
     {
       delete this.ctx.bots[this.guildBot.sid];
@@ -175,6 +183,90 @@ export class QQBot<C extends Context = Context, T extends QQBot.Config = QQBot.C
   async createDirectChannel(id: string)
   {
     return { id: toPrivateChannelId(id), type: Universal.Channel.Type.DIRECT };
+  }
+
+  async getChannel(channelId: string): Promise<Universal.Channel>
+  {
+    if (isPrivateChannelId(channelId))
+    {
+      const userId = fromPrivateChannelId(channelId);
+      const user = await this.getUser(userId);
+      return {
+        id: channelId,
+        type: Universal.Channel.Type.DIRECT,
+        name: user.name ?? userId,
+      };
+    }
+    const group = await this.internal.getGroupInfo(channelId);
+    return decodeGroupChannel(group);
+  }
+
+  async getGuild(guildId: string): Promise<Universal.Guild>
+  {
+    if (isPrivateChannelId(guildId))
+    {
+      const userId = fromPrivateChannelId(guildId);
+      const user = await this.getUser(userId);
+      return {
+        id: guildId,
+        name: user.name ?? userId,
+        avatar: user.avatar,
+      };
+    }
+    const group = await this.internal.getGroupInfo(guildId);
+    return decodeGroupGuild(group);
+  }
+
+  async getChannelList(guildId: string, next?: string): Promise<Universal.List<Universal.Channel>>
+  {
+    return { data: [await this.getChannel(guildId)] };
+  }
+
+  async muteGuildMember(guildId: string, userId: string, duration: number, reason?: string): Promise<void>
+  {
+    const op = duration <= 0
+      ? 'del' as const
+      : await this.resolveMuteOp(guildId, userId);
+    await this.internal.setRestrictChatSetting(guildId, {
+      members: [{
+        op,
+        member_openid: userId,
+        mute_expire_at: duration > 0 ? new Date(Date.now() + duration).toISOString() : '',
+      }],
+    });
+  }
+
+  private async resolveMuteOp(guildId: string, userId: string): Promise<'add' | 'update'>
+  {
+    try
+    {
+      const setting = await this.internal.getRestrictChatSetting(guildId);
+      return setting.members?.some(member => member.member_openid === userId) ? 'update' : 'add';
+    } catch
+    {
+      return 'add';
+    }
+  }
+
+  registerJoinRequest(groupOpenid: string, memberOpenid: string, joinRequestId: string)
+  {
+    this.joinRequestMap.set(joinRequestId, {
+      groupOpenid,
+      memberOpenid,
+    });
+  }
+
+  async handleGuildMemberRequest(messageId: string, approve: boolean, comment?: string): Promise<void>
+  {
+    const request = this.joinRequestMap.get(messageId);
+    if (!request) throw new Error(`cannot resolve join request: ${messageId}`);
+    await this.internal.approveJoinRequest(request.groupOpenid, request.memberOpenid, {
+      op: approve ? 'approve' : 'decline',
+      join_request_id: messageId,
+      reject_reason: approve ? undefined : comment,
+      add_to_member_blacklist: false,
+    });
+    this.joinRequestMap.delete(messageId);
   }
 
   async deleteMessage(channelId: string, messageId: string): Promise<void>
