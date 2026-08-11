@@ -48,7 +48,7 @@ export class QQBot<C extends Context = Context, T extends QQBot.Config = QQBot.C
       endpoint = endpoint.replace(/^(https?:\/\/)/, '$1sandbox.');
     }
     this.http = this.ctx.http.extend({
-      endpoint,
+      baseURL: endpoint,
       headers: {
         'Authorization': '',
         'X-Union-Appid': this.config.id,
