@@ -97,6 +97,12 @@ export enum Intents
   PUBLIC_GUILD_MESSAGES = 1 << 30
 }
 
+export enum AutoStreamText
+{
+  私聊 = 1 << 0,
+  群聊 = 1 << 1,
+}
+
 export enum Opcode
 {
   /** 服务端进行消息推送 */

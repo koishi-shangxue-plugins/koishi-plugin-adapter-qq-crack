@@ -29,7 +29,7 @@ export interface BaseConfig extends QQ.Options
   retryWhen: number[];
   manualAcknowledge: boolean;
   loggerinfo: boolean;
-  autoStreamText: boolean;
+  autoStreamText: number;
   useMarkdownIfAt: boolean;
   disableUserNamePersist: boolean;
   userInfoApi?: string;
@@ -73,7 +73,7 @@ export const Config: Schema<Config> = Schema.intersect([
     userInfoApi: Schema.string().role("link").default("https://oiapi.net/api/Openid").description("API 接口地址"),
   }).description('进阶设置'),
   Schema.object({
-    autoStreamText: Schema.boolean().description('使用原生 Markdown 流式发送纯文本消息。').default(false),
+    autoStreamText: Schema.bitset(QQ.AutoStreamText).description('使用原生 Markdown 流式发送纯文本消息。').default(QQ.AutoStreamText.私聊),
     useMarkdownIfAt: Schema.boolean().description('在包含 `<at>` 元素时使用 Markdown 格式，禁用将忽略 `<at>` 元素。').default(true),
     loggerinfo: Schema.boolean().default(false).description('调试模式').experimental(),
     disableUserNamePersist: Schema.boolean().default(false).description('禁用将消息中的用户名写入数据库（调试用）。').experimental(),

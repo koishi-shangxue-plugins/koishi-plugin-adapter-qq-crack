@@ -348,8 +348,11 @@ export class QQMessageEncoder<C extends Context = Context> extends MessageEncode
         message_id: resolveMessageReference(this.reference),
       };
     }
+    // 主动发送时可能没有 isDirect，需要同时根据 private: 频道 ID 判断。
+    const isDirect = this.session.isDirect || isPrivateChannelId(this.session.channelId);
+    const autoStreamTarget = isDirect ? QQ.AutoStreamText.私聊 : QQ.AutoStreamText.群聊;
     const autoStreamText = Boolean(
-      this.bot.config.autoStreamText
+      (this.bot.config.autoStreamText & autoStreamTarget)
       && !this.customRequest
       && !this.useMarkdown
       && !this.attachedFile
@@ -399,8 +402,6 @@ export class QQMessageEncoder<C extends Context = Context> extends MessageEncode
     applyAutoStream(this.options.session, data, shouldAutoStream);
     const session = this.bot.session();
     session.type = 'send';
-    // 主动发送时可能没有 isDirect，需要同时根据 private: 频道 ID 判断。
-    const isDirect = this.session.isDirect || isPrivateChannelId(this.session.channelId);
     const sendRequest = (payload: QQ.Message.Request) =>
     {
       return isDirect
