@@ -98,16 +98,17 @@ function groupPanelItemSchema()
       type: Schema.union([
         Schema.const('command').description('指令'),
         Schema.const('link').description('链接'),
-      ]).role('radio').description('面板元素类型。').default('command'),
-      onlyAdmin,
+      ]).description('面板元素类型。').default('command'),
     }),
     Schema.union([
       Schema.object({
         type: Schema.const('command'),
+        onlyAdmin,
       }),
       Schema.object({
         type: Schema.const('link').required(),
         value: Schema.string().role('link').description('跳转链接，必须以 https:// 开头。').default(''),
+        onlyAdmin,
       }),
     ]),
   ]);
@@ -148,9 +149,11 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     privateMenuOverride: Schema.boolean().default(false).description('是否覆盖并删除冗余的单聊菜单。关闭时仅向原有菜单追加配置项。'),
     privateMenu: Schema.array(privateMenuItemSchema()).max(10).default([]).description('单聊自定义菜单。'),
+  }).description('私聊指令菜单'),
+  Schema.object({
     groupPanelsOverride: Schema.boolean().default(false).description('是否覆盖并删除冗余的群聊指令面板。关闭时仅向原有面板追加配置项。'),
     groupPanels: Schema.array(groupPanelItemSchema()).max(20).default([]).description('群聊指令面板。'),
-  }).description('指令菜单'),
+  }).description('群聊指令菜单'),
   Schema.object({
     autoStreamText: Schema.boolean().description('使用原生 Markdown 流式发送纯文本消息。').default(false),
     useMarkdownIfAt: Schema.boolean().description('在包含 `<at>` 元素时使用 Markdown 格式，禁用将忽略 `<at>` 元素。').default(true),
