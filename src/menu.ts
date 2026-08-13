@@ -267,6 +267,13 @@ function isMenuEqual(current: QQ.Menu | undefined, desired: QQ.MenuItem[])
   return isDeepStrictEqual(normalizeMenuItems(current?.items), normalizeMenuItems(desired));
 }
 
+function isQuantityLimitError(error: unknown)
+{
+  if (!error || typeof error !== 'object') return false;
+  const response = (error as { response?: { data?: { err_code?: number; code?: number; }; }; }).response;
+  return response?.data?.err_code === 40030013 || response?.data?.code === 30013;
+}
+
 export class MenuManager
 {
   private syncPromise?: Promise<void>;
@@ -310,7 +317,13 @@ export class MenuManager
     if (this.disposed) return;
     await this.syncGroupPanels().catch((error) =>
     {
-      this.bot.logger.warn('同步群聊指令面板失败：%o', error);
+      if (isQuantityLimitError(error))
+      {
+        logDebug(this.bot.config, '同步群聊指令面板失败：%o', error);
+      } else
+      {
+        this.bot.logger.warn('同步群聊指令面板失败：%o', error);
+      }
     });
   }
 
@@ -329,7 +342,13 @@ export class MenuManager
     if (this.disposed) return;
     await this.syncGroupSlashCommands(commands).catch((error) =>
     {
-      this.bot.logger.warn('同步群聊斜杠指令失败：%o', error);
+      if (isQuantityLimitError(error))
+      {
+        logDebug(this.bot.config, '同步群聊斜杠指令失败：%o', error);
+      } else
+      {
+        this.bot.logger.warn('同步群聊斜杠指令失败：%o', error);
+      }
     });
   }
 
@@ -408,14 +427,7 @@ export class MenuManager
       if (this.disposed) return;
       await this.waitForPanelWriteSlot();
       if (this.disposed) return;
-      const created = await this.bot.internal.createPanel({
-        scope: 'group',
-        target_type: 'all',
-        panel: {
-          items: desiredItems,
-          remark: GROUP_PANEL_REMARK,
-        },
-      });
+      const created = await this.createGroupPanelWithFallback(desiredItems);
       createdPanelId = created.panel_id;
       logDebug(this.bot.config, 'group panel created: %s', createdPanelId);
     }
@@ -475,14 +487,7 @@ export class MenuManager
       if (this.disposed) return;
       await this.waitForPanelWriteSlot();
       if (this.disposed) return;
-      const created = await this.bot.internal.createPanel({
-        scope: 'group',
-        target_type: 'all',
-        panel: {
-          items,
-          remark: GROUP_PANEL_REMARK,
-        },
-      });
+      const created = await this.createGroupPanelWithFallback(items);
       logDebug(this.bot.config, 'group panel created: %s', created.panel_id);
       if (this.disposed) return;
       this.state.groupPanels = currentConfig;
@@ -592,14 +597,7 @@ export class MenuManager
       if (this.disposed) return;
       await this.waitForPanelWriteSlot();
       if (this.disposed) return;
-      const created = await this.bot.internal.createPanel({
-        scope: 'group',
-        target_type: 'all',
-        panel: {
-          items: desiredItems,
-          remark: GROUP_PANEL_REMARK,
-        },
-      });
+      const created = await this.createGroupPanelWithFallback(desiredItems);
       createdPanelId = created.panel_id;
       logDebug(this.bot.config, 'group slash panel created: %s', createdPanelId);
     }
@@ -645,14 +643,7 @@ export class MenuManager
       if (this.disposed) return;
       await this.waitForPanelWriteSlot();
       if (this.disposed) return;
-      const created = await this.bot.internal.createPanel({
-        scope: 'group',
-        target_type: 'all',
-        panel: {
-          items: desiredItems.slice(0, GROUP_PANEL_MAX_ITEMS),
-          remark: GROUP_PANEL_REMARK,
-        },
-      });
+      const created = await this.createGroupPanelWithFallback(desiredItems.slice(0, GROUP_PANEL_MAX_ITEMS));
       logDebug(this.bot.config, 'group slash panel created: %s', created.panel_id);
       return;
     }
@@ -679,6 +670,29 @@ export class MenuManager
         },
       });
       logDebug(this.bot.config, 'group slash panel merged: %s %o', snapshot.record.panel_id, snapshot.items);
+    }
+  }
+
+  private async createGroupPanelWithFallback(items: QQ.PanelItem[])
+  {
+    try
+    {
+      return await this.bot.internal.createPanel({
+        scope: 'group',
+        target_type: 'all',
+        panel: {
+          items,
+          remark: GROUP_PANEL_REMARK,
+        },
+      });
+    } catch (error)
+    {
+      if (isQuantityLimitError(error) && items.length > 10)
+      {
+        logDebug(this.bot.config, 'group panel item limit hit, retrying with 10 items');
+        return this.createGroupPanelWithFallback(items.slice(0, 10));
+      }
+      throw error;
     }
   }
 
