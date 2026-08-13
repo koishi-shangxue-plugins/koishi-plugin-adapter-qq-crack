@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import type { Universal } from 'koishi';
 import type { QQBot } from './bot';
 import { logDebug } from './logger';
 import * as QQ from './types';
@@ -14,6 +15,8 @@ interface MenuSyncState
 {
   privateMenu: QQ.MenuItemConfig[];
   groupPanels: QQ.PanelItemConfig[];
+  privateSlashCommands: Universal.Command[];
+  groupSlashCommands: Universal.Command[];
 }
 
 interface GroupPanelSnapshot
@@ -78,6 +81,66 @@ function toPanelItem(config: QQ.PanelItemConfig): QQ.PanelItem
     item.link = config.value ?? '';
   }
   return item;
+}
+
+function commandText(name: string)
+{
+  return name.startsWith('/') ? name : `/${name}`;
+}
+
+function truncateText(value: string, max: number)
+{
+  return Array.from(value).slice(0, max).join('');
+}
+
+function commandDescription(command: Universal.Command)
+{
+  return command.description[''] || command.description['zh-CN'] || command.name;
+}
+
+function commandToSubMenuItem(command: Universal.Command): QQ.SubMenuItem
+{
+  return {
+    name: truncateText(command.name, 13),
+    type: 'send_message',
+    send_message: commandText(command.name),
+  };
+}
+
+// 私聊菜单按指令层级生成：父指令作为菜单项，子指令作为子菜单
+function commandsToPrivateMenuItems(commands: Universal.Command[]): QQ.MenuItem[]
+{
+  return commands.slice(0, PRIVATE_MENU_MAX_ITEMS).map((command) =>
+  {
+    const children = command.children.slice(0, 5);
+    if (children.length)
+    {
+      return {
+        name: truncateText(command.name, 9),
+        type: 'menu',
+        sub_menu_items: children.map(commandToSubMenuItem),
+      };
+    }
+    return {
+      name: truncateText(command.name, 9),
+      type: 'send_message',
+      send_message: commandText(command.name),
+    };
+  });
+}
+
+// 群聊面板只注册一级指令，避免子指令数量过大
+function commandsToPanelItems(commands: Universal.Command[]): QQ.PanelItem[]
+{
+  return commands.slice(0, GROUP_PANEL_MAX_ITEMS).map((command) =>
+  {
+    return {
+      name: truncateText(commandText(command.name), 14),
+      desc: truncateText(commandDescription(command), 30),
+      type: 'command',
+      only_admin: false,
+    };
+  });
 }
 
 // 平台返回字段可能缺省，比较前先归一到稳定结构
@@ -209,9 +272,12 @@ export class MenuManager
   private syncPromise?: Promise<void>;
   private disposed = false;
   private lastPanelWriteAt = 0;
+  private stateLoaded = false;
   private state: MenuSyncState = {
     privateMenu: [],
     groupPanels: [],
+    privateSlashCommands: [],
+    groupSlashCommands: [],
   };
 
   constructor(private readonly bot: QQBot) { }
@@ -235,6 +301,7 @@ export class MenuManager
   private async run()
   {
     this.state = await this.loadState();
+    this.stateLoaded = true;
     // 两个接口相互独立，避免单聊菜单失败后跳过群聊面板同步
     await this.syncPrivateMenu().catch((error) =>
     {
@@ -247,8 +314,28 @@ export class MenuManager
     });
   }
 
+  async syncSlashCommands(commands: Universal.Command[])
+  {
+    if (this.disposed) return;
+    if (!this.stateLoaded)
+    {
+      this.state = await this.loadState();
+      this.stateLoaded = true;
+    }
+    await this.syncPrivateSlashCommands(commands).catch((error) =>
+    {
+      this.bot.logger.warn('同步私聊斜杠指令失败：%o', error);
+    });
+    if (this.disposed) return;
+    await this.syncGroupSlashCommands(commands).catch((error) =>
+    {
+      this.bot.logger.warn('同步群聊斜杠指令失败：%o', error);
+    });
+  }
+
   private async syncPrivateMenu()
   {
+    if (this.bot.config.privateSlash) return;
     const currentConfig = this.bot.config.privateMenu ?? [];
     const previousConfig = this.state.privateMenu;
     const desiredItems = currentConfig.map(toMenuItem);
@@ -296,6 +383,7 @@ export class MenuManager
 
   private async syncGroupPanels()
   {
+    if (this.bot.config.groupSlash) return;
     if (this.bot.config.groupPanelsOverride)
     {
       await this.syncGroupPanelsOverride();
@@ -431,6 +519,169 @@ export class MenuManager
     await this.saveState();
   }
 
+  private async syncPrivateSlashCommands(commands: Universal.Command[])
+  {
+    if (!this.bot.config.privateSlash) return;
+    const desiredItems = commandsToPrivateMenuItems(commands);
+    const previousCommands = this.state.privateSlashCommands;
+
+    if (this.bot.config.privateMenuOverride)
+    {
+      const current = await this.bot.internal.getMenu();
+      logDebug(this.bot.config, 'private slash menu current: %o, desired: %o', current?.menu, desiredItems);
+      if (!isMenuEqual(current?.menu, desiredItems))
+      {
+        await this.bot.internal.setMenu({ menu: { items: desiredItems } });
+        logDebug(this.bot.config, 'private slash menu overridden: %o', desiredItems);
+      }
+      if (this.disposed) return;
+      this.state.privateSlashCommands = commands;
+      await this.saveState();
+      return;
+    }
+
+    if (isDeepStrictEqual(commands, previousCommands)) return;
+    const previousItems = commandsToPrivateMenuItems(previousCommands);
+    const current = await this.bot.internal.getMenu();
+    logDebug(this.bot.config, 'private slash menu current: %o, desired: %o', current?.menu, desiredItems);
+
+    const existingItems = current?.menu?.items ?? [];
+    const remainingItems = removeMenuItems(existingItems, previousItems);
+    const mergedItems = mergeMenuItems(remainingItems, desiredItems);
+    if (!isDeepStrictEqual(normalizeMenuItems(mergedItems), normalizeMenuItems(existingItems)))
+    {
+      await this.bot.internal.setMenu({ menu: { items: mergedItems } });
+      logDebug(this.bot.config, 'private slash menu merged: %o', mergedItems);
+    }
+    if (this.disposed) return;
+    this.state.privateSlashCommands = commands;
+    await this.saveState();
+  }
+
+  private async syncGroupSlashCommands(commands: Universal.Command[])
+  {
+    if (!this.bot.config.groupSlash) return;
+    const desiredItems = commandsToPanelItems(commands);
+    const previousCommands = this.state.groupSlashCommands;
+
+    if (this.bot.config.groupPanelsOverride)
+    {
+      await this.syncGroupSlashOverride(desiredItems);
+    } else
+    {
+      if (isDeepStrictEqual(commands, previousCommands)) return;
+      const previousItems = commandsToPanelItems(previousCommands);
+      await this.syncGroupSlashMerge(desiredItems, previousItems);
+    }
+
+    if (this.disposed) return;
+    this.state.groupSlashCommands = commands;
+    await this.saveState();
+  }
+
+  private async syncGroupSlashOverride(desiredItems: QQ.PanelItem[])
+  {
+    const records = await this.listGroupPanels();
+    const matching = desiredItems.length
+      ? records.find(record => record.target_type === 'all' && isDeepStrictEqual(normalizePanelItems(record.panel?.items), normalizePanelItems(desiredItems)))
+      : undefined;
+
+    let createdPanelId: string | undefined;
+    if (desiredItems.length && !matching)
+    {
+      if (this.disposed) return;
+      await this.waitForPanelWriteSlot();
+      if (this.disposed) return;
+      const created = await this.bot.internal.createPanel({
+        scope: 'group',
+        target_type: 'all',
+        panel: {
+          items: desiredItems,
+          remark: GROUP_PANEL_REMARK,
+        },
+      });
+      createdPanelId = created.panel_id;
+      logDebug(this.bot.config, 'group slash panel created: %s', createdPanelId);
+    }
+
+    for (const record of records)
+    {
+      if (this.disposed) return;
+      if (matching && record.panel_id === matching.panel_id) continue;
+      if (createdPanelId && record.panel_id === createdPanelId) continue;
+      await this.waitForPanelWriteSlot();
+      if (this.disposed) return;
+      await this.bot.internal.deletePanel(record.panel_id);
+      logDebug(this.bot.config, 'group slash panel deleted: %s', record.panel_id);
+    }
+  }
+
+  private async syncGroupSlashMerge(desiredItems: QQ.PanelItem[], previousItems: QQ.PanelItem[])
+  {
+    const records = await this.listGroupPanels();
+    const snapshots: GroupPanelSnapshot[] = records
+      .filter(record => record.target_type === 'all')
+      .map(record => ({
+        record,
+        items: record.panel?.items ?? [],
+        changed: false,
+      }));
+
+    for (const snapshot of snapshots)
+    {
+      const nextItems = removePanelItems(snapshot.items, previousItems);
+      if (nextItems.length !== snapshot.items.length)
+      {
+        snapshot.items = nextItems;
+        snapshot.changed = true;
+      }
+    }
+
+    const target = snapshots.find(snapshot => snapshot.items.length < GROUP_PANEL_MAX_ITEMS)
+      ?? snapshots[0];
+
+    if (!target && desiredItems.length)
+    {
+      if (this.disposed) return;
+      await this.waitForPanelWriteSlot();
+      if (this.disposed) return;
+      const created = await this.bot.internal.createPanel({
+        scope: 'group',
+        target_type: 'all',
+        panel: {
+          items: desiredItems.slice(0, GROUP_PANEL_MAX_ITEMS),
+          remark: GROUP_PANEL_REMARK,
+        },
+      });
+      logDebug(this.bot.config, 'group slash panel created: %s', created.panel_id);
+      return;
+    }
+
+    if (target)
+    {
+      const mergedItems = mergePanelItems(target.items, desiredItems);
+      if (!isDeepStrictEqual(normalizePanelItems(mergedItems), normalizePanelItems(target.items)))
+      {
+        target.items = mergedItems;
+        target.changed = true;
+      }
+    }
+
+    for (const snapshot of snapshots)
+    {
+      if (!snapshot.changed || this.disposed) continue;
+      await this.waitForPanelWriteSlot();
+      if (this.disposed) return;
+      await this.bot.internal.modifyPanel(snapshot.record.panel_id, {
+        panel: {
+          items: snapshot.items,
+          remark: snapshot.record.panel?.remark ?? '',
+        },
+      });
+      logDebug(this.bot.config, 'group slash panel merged: %s %o', snapshot.record.panel_id, snapshot.items);
+    }
+  }
+
   private async waitForPanelWriteSlot()
   {
     const wait = Math.max(0, this.lastPanelWriteAt + PANEL_WRITE_INTERVAL - Date.now());
@@ -456,6 +707,8 @@ export class MenuManager
       return {
         privateMenu: Array.isArray(data.privateMenu) ? data.privateMenu : [],
         groupPanels: Array.isArray(data.groupPanels) ? data.groupPanels : [],
+        privateSlashCommands: Array.isArray(data.privateSlashCommands) ? data.privateSlashCommands : [],
+        groupSlashCommands: Array.isArray(data.groupSlashCommands) ? data.groupSlashCommands : [],
       };
     } catch (error)
     {
@@ -466,6 +719,8 @@ export class MenuManager
       return {
         privateMenu: [],
         groupPanels: [],
+        privateSlashCommands: [],
+        groupSlashCommands: [],
       };
     }
   }

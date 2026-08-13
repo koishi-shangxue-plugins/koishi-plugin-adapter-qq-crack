@@ -36,8 +36,10 @@ export interface BaseConfig extends QQ.Options
   protocol: 'websocket' | 'webhook';
   path?: string;
   gatewayUrl?: string;
+  privateSlash?: boolean;
   privateMenuOverride?: boolean;
   privateMenu?: QQ.MenuItemConfig[];
+  groupSlash?: boolean;
   groupPanelsOverride?: boolean;
   groupPanels?: QQ.PanelItemConfig[];
 }
@@ -146,14 +148,36 @@ export const Config: Schema<Config> = Schema.intersect([
     gatewayUrl: Schema.string().role('link').description('覆盖 WebSocket 地址。'),
     userInfoApi: Schema.string().role("link").default("https://oiapi.net/api/Openid").description("API 接口地址"),
   }).description('进阶设置'),
-  Schema.object({
-    privateMenuOverride: Schema.boolean().default(false).description('是否覆盖并删除冗余的单聊菜单。关闭时仅向原有菜单追加配置项。'),
-    privateMenu: Schema.array(privateMenuItemSchema()).max(10).default([]).description('单聊自定义菜单。'),
-  }).description('私聊指令菜单'),
-  Schema.object({
-    groupPanelsOverride: Schema.boolean().default(false).description('是否覆盖并删除冗余的群聊指令面板。关闭时仅向原有面板追加配置项。'),
-    groupPanels: Schema.array(groupPanelItemSchema()).max(20).default([]).description('群聊指令面板。'),
-  }).description('群聊指令菜单'),
+  Schema.intersect([
+    Schema.object({
+      privateSlash: Schema.boolean().default(false).description('是否在私聊页面注册斜杠指令（koishi指令）。关闭后 可以通过配置项自定义指令菜单。'),
+      privateMenuOverride: Schema.boolean().default(false).description('是否覆盖并删除冗余的单聊菜单。关闭时仅向原有菜单追加配置项。'),
+    }).description('私聊指令菜单'),
+    Schema.union([
+      Schema.object({
+        privateSlash: Schema.const(false),
+        privateMenu: Schema.array(privateMenuItemSchema()).max(10).default([]).description('单聊自定义菜单。'),
+      }),
+      Schema.object({
+        privateSlash: Schema.const(true).required(),
+      }),
+    ]),
+  ]),
+  Schema.intersect([
+    Schema.object({
+      groupSlash: Schema.boolean().default(false).description('是否在群聊页面注册斜杠指令（koishi指令）。关闭后 可以通过配置项自定义指令菜单。'),
+      groupPanelsOverride: Schema.boolean().default(false).description('是否覆盖并删除冗余的群聊指令面板。关闭时仅向原有面板追加配置项。'),
+    }).description('群聊指令菜单'),
+    Schema.union([
+      Schema.object({
+        groupSlash: Schema.const(false),
+        groupPanels: Schema.array(groupPanelItemSchema()).max(20).default([]).description('群聊指令面板。'),
+      }),
+      Schema.object({
+        groupSlash: Schema.const(true).required(),
+      }),
+    ]),
+  ]),
   Schema.object({
     autoStreamText: Schema.boolean().description('使用原生 Markdown 流式发送纯文本消息。').default(false),
     useMarkdownIfAt: Schema.boolean().description('在包含 `<at>` 元素时使用 Markdown 格式，禁用将忽略 `<at>` 元素。').default(true),

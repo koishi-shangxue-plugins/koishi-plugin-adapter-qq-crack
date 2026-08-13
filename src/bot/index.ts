@@ -156,6 +156,11 @@ export class QQBot<C extends Context = Context, T extends QQBot.Config = QQBot.C
     return `QQBot ${await this.getAccessToken()}`;
   }
 
+  async updateCommands(commands: Universal.Command[])
+  {
+    await this.menuManager?.syncSlashCommands(commands);
+  }
+
   async getLogin()
   {
     return this.toJSON();
