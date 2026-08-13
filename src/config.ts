@@ -50,11 +50,16 @@ function privateMenuItemSchema()
   return Schema.intersect([
     Schema.object({
       name,
-      type: Schema.union(['send_message', 'link', 'menu', 'switch'] as const).description('按钮类型。').default('send_message'),
+      type: Schema.union([
+        Schema.const('send_message').description('发送'),
+        Schema.const('link').description('链接'),
+        Schema.const('menu').description('菜单'),
+        Schema.const('switch').description('开关'),
+      ]).description('按钮类型。').default('send_message'),
     }),
     Schema.union([
       Schema.object({
-        type: Schema.const('send_message').required(),
+        type: Schema.const('send_message'),
         value: Schema.string().description('用户点击后自动填入聊天输入框的内容。').default(''),
       }),
       Schema.object({
@@ -70,8 +75,11 @@ function privateMenuItemSchema()
         type: Schema.const('menu').required(),
         subMenuItems: Schema.array(Schema.object({
           name: Schema.string().description('子按钮名称。').required(),
-          type: Schema.union(['send_message', 'link'] as const).description('子按钮类型。').default('send_message'),
-          value: Schema.string().description('子按钮值：send_message 为发送内容，link 为链接。').default(''),
+          type: Schema.union([
+            Schema.const('send_message').description('发送'),
+            Schema.const('link').description('链接'),
+          ]).description('子按钮类型。').default('send_message'),
+          value: Schema.string().description('发送内容或跳转链接。').default(''),
         })).max(5).role('table').default([]).description('子菜单项。'),
       }),
     ]),
@@ -87,12 +95,15 @@ function groupPanelItemSchema()
     Schema.object({
       name,
       description,
-      type: Schema.union(['command', 'link'] as const).description('面板元素类型。').default('command'),
+      type: Schema.union([
+        Schema.const('command').description('指令'),
+        Schema.const('link').description('链接'),
+      ]).role('radio').description('面板元素类型。').default('command'),
       onlyAdmin,
     }),
     Schema.union([
       Schema.object({
-        type: Schema.const('command').required(),
+        type: Schema.const('command'),
       }),
       Schema.object({
         type: Schema.const('link').required(),
