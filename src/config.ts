@@ -44,6 +44,64 @@ export interface BaseConfig extends QQ.Options
 
 export type Config = BaseConfig & (HttpServer.Options | WsClient.Options);
 
+function privateMenuItemSchema()
+{
+  const name = Schema.string().description('按钮名称，最多 10 个字符，一个中文汉字按 2 个字符计算。').required();
+  return Schema.intersect([
+    Schema.object({
+      name,
+      type: Schema.union(['send_message', 'link', 'menu', 'switch'] as const).description('按钮类型。').default('send_message'),
+    }),
+    Schema.union([
+      Schema.object({
+        type: Schema.const('send_message').required(),
+        value: Schema.string().description('用户点击后自动填入聊天输入框的内容。').default(''),
+      }),
+      Schema.object({
+        type: Schema.const('link').required(),
+        value: Schema.string().role('link').description('跳转链接，必须以 https:// 开头。').default(''),
+      }),
+      Schema.object({
+        type: Schema.const('switch').required(),
+        value: Schema.string().description('开关唯一标识。').default(''),
+        switchDefault: Schema.boolean().description('默认是否打开。').default(false),
+      }),
+      Schema.object({
+        type: Schema.const('menu').required(),
+        subMenuItems: Schema.array(Schema.object({
+          name: Schema.string().description('子按钮名称。').required(),
+          type: Schema.union(['send_message', 'link'] as const).description('子按钮类型。').default('send_message'),
+          value: Schema.string().description('子按钮值：send_message 为发送内容，link 为链接。').default(''),
+        })).max(5).role('table').default([]).description('子菜单项。'),
+      }),
+    ]),
+  ]);
+}
+
+function groupPanelItemSchema()
+{
+  const name = Schema.string().description('指令文本，最多 14 个字符，约 7 个中文汉字。').required();
+  const description = Schema.string().description('指令描述，最多 30 个字符，约 15 个中文汉字。').default('');
+  const onlyAdmin = Schema.boolean().description('是否仅群管理员可点击。').default(false);
+  return Schema.intersect([
+    Schema.object({
+      name,
+      description,
+      type: Schema.union(['command', 'link'] as const).description('面板元素类型。').default('command'),
+      onlyAdmin,
+    }),
+    Schema.union([
+      Schema.object({
+        type: Schema.const('command').required(),
+      }),
+      Schema.object({
+        type: Schema.const('link').required(),
+        value: Schema.string().role('link').description('跳转链接，必须以 https:// 开头。').default(''),
+      }),
+    ]),
+  ]);
+}
+
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     id: Schema.string().description('机器人ID（AppID）。').required(),
@@ -78,25 +136,9 @@ export const Config: Schema<Config> = Schema.intersect([
   }).description('进阶设置'),
   Schema.object({
     privateMenuOverride: Schema.boolean().default(false).description('是否覆盖并删除冗余的单聊菜单。关闭时仅向原有菜单追加配置项。'),
-    privateMenu: Schema.array(Schema.object({
-      name: Schema.string().description('按钮名称，最多 10 个字符，一个中文汉字按 2 个字符计算。').required(),
-      type: Schema.union(['send_message', 'link', 'menu', 'switch'] as const).description('按钮类型。').default('send_message'),
-      value: Schema.string().description('按钮值：send_message 为发送内容，link 为链接，switch 为开关标识。').default(''),
-      switchDefault: Schema.boolean().description('开关按钮的默认状态。').default(false),
-      subMenuItems: Schema.array(Schema.object({
-        name: Schema.string().description('子按钮名称。').required(),
-        type: Schema.union(['send_message', 'link'] as const).description('子按钮类型。').default('send_message'),
-        value: Schema.string().description('子按钮值：send_message 为发送内容，link 为链接。').default(''),
-      })).max(5).role('table').default([]).description('子菜单项，仅在顶层按钮类型为 menu 时生效。'),
-    })).max(10).role('table').default([]).description('单聊自定义菜单。'),
+    privateMenu: Schema.array(privateMenuItemSchema()).max(10).default([]).description('单聊自定义菜单。'),
     groupPanelsOverride: Schema.boolean().default(false).description('是否覆盖并删除冗余的群聊指令面板。关闭时仅向原有面板追加配置项。'),
-    groupPanels: Schema.array(Schema.object({
-      name: Schema.string().description('指令文本，最多 14 个字符，约 7 个中文汉字。').required(),
-      description: Schema.string().description('指令描述，最多 30 个字符，约 15 个中文汉字。').default(''),
-      type: Schema.union(['command', 'link'] as const).description('面板元素类型。').default('command'),
-      value: Schema.string().description('跳转链接，仅在类型为 link 时生效。').default(''),
-      onlyAdmin: Schema.boolean().description('是否仅群管理员可点击。').default(false),
-    })).max(20).role('table').default([]).description('群聊指令面板。'),
+    groupPanels: Schema.array(groupPanelItemSchema()).max(20).default([]).description('群聊指令面板。'),
   }).description('指令菜单'),
   Schema.object({
     autoStreamText: Schema.boolean().description('使用原生 Markdown 流式发送纯文本消息。').default(false),
