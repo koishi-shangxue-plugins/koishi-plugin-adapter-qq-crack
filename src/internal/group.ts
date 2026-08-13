@@ -40,6 +40,26 @@ declare module './internal' {
     deleteJoinApprovalStrategy(strategy_id: string): Promise<{}>;
     executeJoinApprovalStrategy(strategy_id: string): Promise<{}>;
     modifyJoinApprovalStrategyWhitelist(strategy_id: string, data: QQ.ModifyJoinApprovalStrategyWhitelistRequest): Promise<QQ.ModifyJoinApprovalStrategyWhitelistResponse>;
+    getMenu(): Promise<QQ.MenuResponse>;
+    setMenu(data: {
+      menu: QQ.Menu;
+    }): Promise<{
+      version: number;
+    }>;
+    getPanels(params: Partial<{
+      scope: QQ.PanelScope;
+      cursor: string;
+      limit: number;
+    }>): Promise<QQ.PanelListResponse>;
+    createPanel(data: QQ.CreatePanelRequest): Promise<QQ.CreatePanelResponse>;
+    getPanel(panel_id: string): Promise<QQ.PanelRecord>;
+    modifyPanel(panel_id: string, data: {
+      panel: QQ.Panel;
+    }): Promise<{
+      version: number;
+    }>;
+    deletePanel(panel_id: string): Promise<{}>;
+    modifyPanelTarget(panel_id: string, data: QQ.ModifyPanelTargetRequest): Promise<{}>;
   }
 }
 
@@ -109,6 +129,22 @@ GroupInternal.define(false, {
   },
   '/v2/groups/join_approval_strategy/{strategy.id}/whitelist_users': {
     POST: 'modifyJoinApprovalStrategyWhitelist',
+  },
+  '/v2/menu': {
+    GET: 'getMenu',
+    PUT: 'setMenu',
+  },
+  '/v2/panels': {
+    GET: 'getPanels',
+    POST: 'createPanel',
+  },
+  '/v2/panels/{panel.id}': {
+    GET: 'getPanel',
+    PUT: 'modifyPanel',
+    DELETE: 'deletePanel',
+  },
+  '/v2/panels/{panel.id}/target': {
+    PUT: 'modifyPanelTarget',
   },
 });
 

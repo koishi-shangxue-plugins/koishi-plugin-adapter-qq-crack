@@ -1696,6 +1696,130 @@ export interface ModifyJoinApprovalStrategyWhitelistResponse
   updated_at: string;
 }
 
+export type MenuItemType = 'switch' | 'send_message' | 'link' | 'menu';
+export type SubMenuItemType = 'send_message' | 'link';
+
+export interface Switch
+{
+  switch_id: string;
+  default: boolean;
+}
+
+export interface SubMenuItem
+{
+  name: string;
+  type: SubMenuItemType;
+  send_message?: string;
+  link?: string;
+}
+
+export interface MenuItem
+{
+  name: string;
+  type: MenuItemType;
+  sub_menu_items?: SubMenuItem[];
+  send_message?: string;
+  link?: string;
+  switch?: Switch;
+}
+
+export interface Menu
+{
+  items: MenuItem[];
+}
+
+export interface MenuResponse
+{
+  version: number;
+  menu?: Menu;
+}
+
+export type PanelScope = 'c2c' | 'group' | 'channel' | 'dm';
+export type PanelTargetType = 'all' | 'specific';
+export type PanelItemType = 'command' | 'link';
+
+export interface PanelItem
+{
+  name: string;
+  desc?: string;
+  type: PanelItemType;
+  only_admin?: boolean;
+  link?: string;
+}
+
+export interface Panel
+{
+  items: PanelItem[];
+  remark?: string;
+  version?: number;
+}
+
+export interface PanelRecord
+{
+  panel_id: string;
+  scope: PanelScope;
+  target_type: PanelTargetType;
+  panel: Panel;
+  created_at?: string;
+  updated_at?: string;
+  version?: number;
+  user_openids?: string[];
+  group_openids?: string[];
+}
+
+export interface PanelListResponse
+{
+  records: PanelRecord[];
+  next_cursor: string;
+  is_end: boolean;
+}
+
+export interface CreatePanelRequest
+{
+  scope: PanelScope;
+  target_type?: PanelTargetType;
+  user_openids?: string[];
+  group_openids?: string[];
+  panel: Panel;
+}
+
+export interface CreatePanelResponse
+{
+  panel_id: string;
+}
+
+export interface ModifyPanelTargetRequest
+{
+  op: 'add' | 'del';
+  user_openids?: string[];
+  group_openids?: string[];
+}
+
+export interface SubMenuItemConfig
+{
+  name: string;
+  type: SubMenuItemType;
+  value?: string;
+}
+
+export interface MenuItemConfig
+{
+  name: string;
+  type: MenuItemType;
+  value?: string;
+  switchDefault?: boolean;
+  subMenuItems?: SubMenuItemConfig[];
+}
+
+export interface PanelItemConfig
+{
+  name: string;
+  description?: string;
+  type: PanelItemType;
+  value?: string;
+  onlyAdmin?: boolean;
+}
+
 export interface MessageKeyboard
 {
   id: string;

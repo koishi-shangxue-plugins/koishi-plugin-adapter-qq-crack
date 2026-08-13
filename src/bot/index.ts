@@ -5,6 +5,7 @@ import { QQMessageEncoder } from '../message';
 import { GroupInternal } from '../internal';
 import { HttpServer } from '../http';
 import { decodeGroupChannel, decodeGroupGuild, decodeUser } from '../utils';
+import { MenuManager } from '../menu';
 import * as AdapterConfig from '../config';
 import * as QQ from '../types';
 import { fromPrivateChannelId, isPrivateChannelId, toPrivateChannelId } from '../channel';
@@ -37,6 +38,8 @@ export class QQBot<C extends Context = Context, T extends QQBot.Config = QQBot.C
 
   private _token?: string;
   private _disposeTokenRefresh?: () => void;
+  private menuManager?: MenuManager;
+  private menuSyncStarted = false;
   private joinRequestMap = new Map<string, JoinRequestCache>();
 
   constructor(ctx: C, config: T)
@@ -59,6 +62,7 @@ export class QQBot<C extends Context = Context, T extends QQBot.Config = QQBot.C
       parent: this,
     });
     this.internal = new GroupInternal(this, () => this.http);
+    this.menuManager = new MenuManager(this);
     if (config.protocol === 'websocket')
     {
       this.ctx.plugin(WsClient, this as QQBot<C, QQBot.Config & WsClient.Options>);
@@ -74,11 +78,21 @@ export class QQBot<C extends Context = Context, T extends QQBot.Config = QQBot.C
     if (user.union_openid) this.selfOpenid = user.union_openid;
     if (!this.user) this.user = decodeUser(user);
     else Object.assign(this.user, decodeUser(user));
+    if (!this.menuSyncStarted)
+    {
+      this.menuSyncStarted = true;
+      const sync = this.menuManager?.sync();
+      if (sync) void sync.catch((error) =>
+      {
+        this.logger.warn('同步指令菜单失败：%o', error);
+      });
+    }
   }
 
   async stop()
   {
     this._disposeTokenRefresh?.();
+    this.menuManager?.dispose();
     this.joinRequestMap.clear();
     if (this.guildBot)
     {
