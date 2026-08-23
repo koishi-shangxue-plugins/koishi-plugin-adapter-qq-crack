@@ -97,6 +97,9 @@ export enum Intents
   PUBLIC_GUILD_MESSAGES = 1 << 30
 }
 
+/** 自动流式文本的会话类型 */
+export type AutoStreamText = 'private' | 'group';
+
 export enum Opcode
 {
   /** 服务端进行消息推送 */

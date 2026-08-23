@@ -29,7 +29,8 @@ export interface BaseConfig extends QQ.Options
   retryWhen: number[];
   manualAcknowledge: boolean;
   loggerinfo: boolean;
-  autoStreamText: boolean;
+  /** 按会话类型启用流式纯文本消息 */
+  autoStreamText: QQ.AutoStreamText[];
   useMarkdownIfAt: boolean;
   disableUserNamePersist: boolean;
   userInfoApi?: string;
@@ -179,7 +180,10 @@ export const Config: Schema<Config> = Schema.intersect([
     ]),
   ]),
   Schema.object({
-    autoStreamText: Schema.boolean().description('使用原生 Markdown 流式发送纯文本消息。').default(false),
+    autoStreamText: Schema.array(Schema.union([
+      Schema.const('private').description('私聊'),
+      Schema.const('group').description('群聊'),
+    ])).role('checkbox').description('选择使用原生 Markdown 流式发送纯文本消息的会话类型。').default(['private']),
     useMarkdownIfAt: Schema.boolean().description('在包含 `<at>` 元素时使用 Markdown 格式，禁用将忽略 `<at>` 元素。').default(true),
     loggerinfo: Schema.boolean().default(false).description('调试模式').experimental(),
     disableUserNamePersist: Schema.boolean().default(false).description('禁用将消息中的用户名写入数据库（调试用）。').experimental(),
