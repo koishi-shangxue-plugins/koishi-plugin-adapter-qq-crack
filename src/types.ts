@@ -1428,6 +1428,7 @@ export interface UserMessage
     username?: string;
     bot?: boolean;
     member_openid?: string;
+    member_role?: 'owner' | 'admin' | 'member';
     union_openid?: string;
   };
   mentions?: (

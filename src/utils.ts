@@ -310,11 +310,17 @@ export async function decodeGroupMessage(
   }
   payload.timestamp = new Date(date).valueOf();
   payload.guild = data.group_id && { id: data.group_id };
-  payload.user = {
+  const user: Universal.User & { role?: string; } = {
     id: data.author.id,
     name: data.author.username,
     avatar: `https://q.qlogo.cn/qqapp/${bot.config.id}/${data.author.id}/640`,
   };
+  if (data.author.member_role)
+  {
+    user.role = data.author.member_role;
+    payload.member = { roles: [{ id: data.author.member_role }] };
+  }
+  payload.user = user;
   return message;
 }
 
