@@ -4,6 +4,7 @@ import { decodeChannel, decodeGuild, decodeGuildMember, decodeMessage, decodeUse
 import { GuildInternal } from '../internal';
 import { QQGuildMessageEncoder } from '../message';
 import * as QQ from '../types';
+import { isPrivateChannelId } from '../channel';
 
 export namespace QQGuildBot
 {
@@ -55,18 +56,21 @@ export class QQGuildBot<C extends Context = Context> extends Bot<C>
 
   async getGuild(guildId: string)
   {
+    if (isPrivateChannelId(guildId)) return this.parent.getGuild(guildId);
     const guild = await this.internal.getGuild(guildId);
     return decodeGuild(guild);
   }
 
   async getChannelList(guildId: string, next?: string): Promise<Universal.List<Universal.Channel>>
   {
+    if (isPrivateChannelId(guildId)) return this.parent.getChannelList(guildId, next);
     const channels = await this.internal.getChannels(guildId);
     return { data: channels.map(decodeChannel) };
   }
 
   async getChannel(channelId: string): Promise<Universal.Channel>
   {
+    if (isPrivateChannelId(channelId)) return this.parent.getChannel(channelId);
     const channel = await this.internal.getChannel(channelId);
     return decodeChannel(channel);
   }
@@ -146,7 +150,10 @@ export class QQGuildBot<C extends Context = Context> extends Bot<C>
 
   async deleteMessage(channelId: string, messageId: string)
   {
-    if (channelId.includes('_'))
+    if (isPrivateChannelId(channelId))
+    {
+      await this.parent.deleteMessage(channelId, messageId);
+    } else if (channelId.includes('_'))
     {
       // direct message
       const [guildId] = channelId.split('_');

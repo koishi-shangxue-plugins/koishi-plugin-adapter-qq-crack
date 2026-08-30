@@ -9,6 +9,7 @@ import { fromPrivateChannelId, isPrivateChannelId } from './channel';
 import { registerMessageReference, resolveMessageReference } from './reference';
 import { parseQQArkElement } from './ark';
 import { chunkedUpload } from './chunked-upload';
+import { buildSendMessage } from './send-result';
 
 export const escapeMarkdown = (val: string) =>
   val
@@ -88,11 +89,12 @@ export class QQGuildMessageEncoder<C extends Context = Context> extends MessageE
     {
       return;
     }
-    const isDirect = this.channelId.includes('_');
+    const isPrivate = isPrivateChannelId(this.channelId);
+    const isDirect = isPrivate || this.channelId.includes('_');
 
     let endpoint = `/channels/${this.channelId}/messages`;
     if (isDirect) endpoint = `/dms/${this.channelId.split('_')[0]}/messages`;
-    const useFormData = Boolean(this.file);
+    const useFormData = !isPrivate && Boolean(this.file);
     let msg_id = this.options?.session?.messageId;
     if (this.options?.session && (Date.now() - this.options?.session?.timestamp) > MSG_TIMEOUT)
     {
@@ -104,7 +106,47 @@ export class QQGuildMessageEncoder<C extends Context = Context> extends MessageE
     logDebug(this.bot, 'use form data %s', useFormData);
     try
     {
-      if (useFormData)
+      if (isPrivate)
+      {
+        const openid = fromPrivateChannelId(this.channelId);
+        const payload: QQ.Message.Request = {
+          content: this.content,
+          msg_type: QQ.Message.Type.TEXT,
+          msg_id,
+          event_id: this.passiveEventId,
+          ...(this.reference ? {
+            message_reference: {
+              message_id: resolveMessageReference(this.reference),
+            },
+          } : {}),
+        };
+        if (this.file)
+        {
+          const fileBuffer = Buffer.from(await this.file.arrayBuffer());
+          const file = await chunkedUpload(
+            this.bot.parent,
+            openid,
+            true,
+            fileBuffer,
+            this.filename || 'image',
+            QQ.Message.File.Type.IMAGE,
+          );
+          payload.media = file;
+          payload.msg_type = QQ.Message.Type.MEDIA;
+          if (!payload.content?.length) delete payload.content;
+        } else if (this.fileUrl)
+        {
+          const file = await this.bot.parent.internal.sendFilePrivate(openid, {
+            file_type: QQ.Message.File.Type.IMAGE,
+            srv_send_msg: false,
+            url: this.fileUrl,
+          });
+          payload.media = file;
+          payload.msg_type = QQ.Message.Type.MEDIA;
+          if (!payload.content?.length) delete payload.content;
+        }
+        r = await this.bot.parent.internal.sendPrivateMessage(openid, payload);
+      } else if (useFormData)
       {
         const form = new FormData();
         form.append('content', this.content);
@@ -167,6 +209,7 @@ export class QQGuildMessageEncoder<C extends Context = Context> extends MessageE
       }
     }
 
+    const content = this.content;
     const session = this.bot.session();
     session.type = 'send';
     // await decodeMessage(this.bot, r, session.event.message = {}, session.event)
@@ -182,7 +225,18 @@ export class QQGuildMessageEncoder<C extends Context = Context> extends MessageE
     if (r?.id)
     {
       registerMessageReference(r.id, r.ext_info?.ref_idx);
+      const message = buildSendMessage(
+        this.bot,
+        r,
+        content,
+        this.channelId,
+        this.session.guildId,
+        isDirect,
+        this.reference,
+      );
+      session.event.message = message;
       session.messageId = r.id;
+      session.timestamp = r.timestamp ? new Date(r.timestamp).valueOf() : Date.now();
       session.app.emit(session, 'send', session);
       this.results.push(session.event.message);
     } else if (r?.code === 304023 && this.bot.config.parent.intents & QQ.Intents.MESSAGE_AUDIT)
@@ -190,7 +244,21 @@ export class QQGuildMessageEncoder<C extends Context = Context> extends MessageE
       try
       {
         const auditData: QQ.MessageAudited = await this.audit(r.data.message_audit.audit_id);
+        const message = buildSendMessage(
+          this.bot,
+          {
+            id: auditData.message_id,
+            timestamp: auditData.create_time || auditData.audit_time,
+          },
+          content,
+          this.channelId,
+          this.session.guildId,
+          isDirect,
+          this.reference,
+        );
+        session.event.message = message;
         session.messageId = auditData.message_id;
+        session.timestamp = new Date(auditData.create_time || auditData.audit_time).valueOf();
         session.app.emit(session, 'send', session);
         this.results.push(session.event.message);
       } catch (e)
@@ -401,6 +469,7 @@ export class QQMessageEncoder<C extends Context = Context> extends MessageEncode
       clearAutoStream(this.options.session);
     }
     applyAutoStream(this.options.session, data, shouldAutoStream);
+    const content = this.content;
     const session = this.bot.session();
     session.type = 'send';
     const sendRequest = (payload: QQ.Message.Request) =>
@@ -418,6 +487,16 @@ export class QQMessageEncoder<C extends Context = Context> extends MessageEncode
         {
           registerMessageReference(resp.id, resp.ext_info?.ref_idx);
           updateAutoStream(this.options.session, data, resp.id);
+          const message = buildSendMessage(
+            this.bot,
+            resp,
+            content,
+            this.session.channelId,
+            this.session.guildId,
+            isDirect,
+            this.reference,
+          );
+          session.event.message = message;
           session.messageId = resp.id;
           session.timestamp = new Date(resp.timestamp).valueOf();
           session.channelId = this.session.channelId;
@@ -429,6 +508,19 @@ export class QQMessageEncoder<C extends Context = Context> extends MessageEncode
           try
           {
             const auditData: QQ.MessageAudited = await this.audit(resp.audit_id);
+            const message = buildSendMessage(
+              this.bot,
+              {
+                id: auditData.message_id,
+                timestamp: auditData.create_time || auditData.audit_time,
+              },
+              content,
+              this.session.channelId,
+              this.session.guildId,
+              isDirect,
+              this.reference,
+            );
+            session.event.message = message;
             session.messageId = auditData.message_id;
             session.app.emit(session, 'send', session);
             this.results.push(session.event.message);
