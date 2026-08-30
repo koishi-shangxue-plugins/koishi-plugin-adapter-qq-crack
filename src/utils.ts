@@ -315,12 +315,25 @@ export async function decodeGroupMessage(
     name: data.author.username,
     avatar: `https://q.qlogo.cn/qqapp/${bot.config.id}/${data.author.id}/640`,
   };
+  let member: Universal.GuildMember | undefined;
   if (data.author.member_role)
   {
     user.role = data.author.member_role;
-    payload.member = { roles: [{ id: data.author.member_role }] };
+    member = { roles: [{ id: data.author.member_role }] };
   }
   payload.user = user;
+  payload.member = member;
+  if ('type' in payload)
+  {
+    // 同时写入合并后的 author，兼容直接读取 session.event.author 的插件
+    payload.author = {
+      ...user,
+      ...(member || {}),
+      userId: user.id,
+      username: user.name,
+      nickname: member?.name,
+    };
+  }
   return message;
 }
 

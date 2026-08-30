@@ -427,6 +427,7 @@ export class QQMessageEncoder<C extends Context = Context> extends MessageEncode
       && !this.attachedFile
       && !this.rows.flat().length
       && this.plainTextOnly
+      && !!this.options?.session
       && this.content.trim().length
     );
     if (!this.customRequest && this.attachedFile)
@@ -546,7 +547,9 @@ export class QQMessageEncoder<C extends Context = Context> extends MessageEncode
           this.retry = true;
           return send();
         }
-        this.errors.push(createSendError(e));
+        const error = createSendError(e);
+        this.bot.logger.warn('%s 消息发送失败: %s', this.session.cid, error.message);
+        this.errors.push(error);
       }
     };
     await send();

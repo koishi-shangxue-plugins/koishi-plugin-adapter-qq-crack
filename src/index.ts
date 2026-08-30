@@ -1,4 +1,4 @@
-import { Context, Session } from 'koishi';
+import { Context, Session, Universal } from 'koishi';
 import * as QQ from './types';
 import { QQBot } from './bot';
 import { GroupInternal, GuildInternal } from './internal';
@@ -45,6 +45,13 @@ declare module '@satorijs/core' {
   {
     qq?: QQ.Payload & GroupInternal;
     qqguild?: QQ.Payload & GuildInternal;
+  }
+}
+
+declare module '@satorijs/protocol' {
+  interface Event
+  {
+    author?: Universal.GuildMember & Universal.User;
   }
 }
 
