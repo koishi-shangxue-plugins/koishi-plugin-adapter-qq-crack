@@ -10,8 +10,12 @@ export enum Intents
    * - CHANNEL_DELETE 当channel被删除时
    */
   GUILDS = 1 << 0,
-  GUILD_MEMBER_ADD = 1 << 24,
-  GUILD_MEMBER_REMOVE = 1 << 24,
+  /** 群成员、入群申请等群事件 */
+  GROUP_MEMBER_EVENT = 1 << 24,
+  /** 兼容旧配置名称，实际与 GROUP_MEMBER_EVENT 使用同一位 */
+  GUILD_MEMBER_ADD = GROUP_MEMBER_EVENT,
+  /** 兼容旧配置名称，实际与 GROUP_MEMBER_EVENT 使用同一位 */
+  GUILD_MEMBER_REMOVE = GROUP_MEMBER_EVENT,
   /**
    * 频道成员事件
    * - GUILD_MEMBER_UPDATE 当成员资料变更时
@@ -57,8 +61,7 @@ export enum Intents
    * - GROUP_AT_MESSAGE_CREATE 用户在群聊 @ 机器人发送消息
    * - GROUP_MSG_RECEIVE 群聊消息接收开启
    * - GROUP_MSG_REJECT 群聊消息接收关闭
-   * - GROUP_JOIN_REQUEST 用户申请加群
-  */
+   */
   GROUP_AND_C2C_EVENT = 1 << 25,
   /**
    * - INTERACTION_CREATE 互动事件创建时
@@ -648,7 +651,7 @@ export interface Guild
   owner_id?: string;
   member_count?: number;
   max_members?: number;
-  description?: number;
+  description?: string;
   joined_at?: string;
 }
 
@@ -765,11 +768,78 @@ export interface GroupMemberEvent
 {
   group_openid: string;
   member_openid: string;
+  user_openid?: string;
   user?: User;
   guild?: Guild;
   member?: MemberWithGuild;
   op_member_openid?: string;
   timestamp: number;
+}
+
+export interface GroupMember
+{
+  member_openid: string;
+  username: string;
+  member_role: 'member' | 'owner' | 'admin';
+  bot: boolean;
+  joined_at: string;
+  union_openid?: string;
+}
+
+export interface GroupMemberList
+{
+  members: GroupMember[];
+  next_cursor: string;
+}
+
+export interface BatchRemoveGroupMembersRequest
+{
+  member_openids: string[];
+  add_to_member_blacklist?: boolean;
+}
+
+export interface BatchRemoveGroupMembersResponse
+{
+  remove_members_result: string;
+  add_to_member_blacklist_fail_openids: string[];
+}
+
+export interface GroupMemberBlacklistUser
+{
+  union_openid?: string;
+  member_openid: string;
+  username: string;
+  banned_at: string;
+  bot: boolean;
+}
+
+export interface GroupMemberBlacklist
+{
+  users: GroupMemberBlacklistUser[];
+  next_cursor: string;
+}
+
+export interface ModifyGroupMemberBlacklistRequest
+{
+  op: 'add' | 'del';
+  member_openids: string[];
+}
+
+export interface ModifyGroupMemberBlacklistResponse
+{
+  fail_openids: string[];
+}
+
+export interface GenerateUrlLinkRequest
+{
+  callback_data?: string;
+}
+
+export interface GenerateUrlLinkResponse
+{
+  data: {
+    url: string;
+  };
 }
 
 export interface CreateGuildAnnounceParams
@@ -1014,6 +1084,16 @@ export interface APIPermissionDemand
   /** 接口权限链接中的接口权限描述信息 */
   title: string;
   /** 接口权限链接中的机器人可使用功能的描述信息 */
+  desc: string;
+}
+
+export interface CreateAPIPermissionDemandRequest
+{
+  /** 授权链接发送的子频道 ID */
+  channel_id: string;
+  /** API 权限需求标识 */
+  api_identify: APIPermissionDemandIdentify;
+  /** 权限功能描述 */
   desc: string;
 }
 
@@ -1406,22 +1486,48 @@ export namespace Forum
   }
 }
 
+export type UserMessageArkType =
+  | 'tuwen'
+  | 'feed'
+  | 'miniapp'
+  | 'map'
+  | 'contact_card'
+  | 'video_share'
+  | 'music_together'
+  | 'picture';
+
+export interface UserMessageArkData
+{
+  prompt?: string;
+  ark_type?: UserMessageArkType;
+  ark_name?: string;
+  fields?: Record<string, unknown>;
+}
+
+export interface UserMessageElement
+{
+  content?: string;
+  message_type?: number;
+  msg_idx?: string;
+  author?: UserMessage['author'];
+  attachments?: {
+    content?: string;
+    content_type: string;
+    filename: string;
+    height?: number;
+    size?: number;
+    url: string;
+    width?: number;
+    voice_wav_url?: string;
+    asr_refer_text?: string;
+  }[];
+  ark_data?: UserMessageArkData;
+  msg_elements?: UserMessageElement[];
+}
+
 export interface UserMessage
 {
-  msg_elements?: {
-    content?: string;
-    message_type?: number;
-    msg_idx?: string;
-    attachments?: {
-      content?: string;
-      content_type: string;
-      filename: string;
-      height?: number;
-      size?: number;
-      url: string;
-      width?: number;
-    }[];
-  }[];
+  msg_elements?: UserMessageElement[];
   id: string;
   author: {
     id: string;
@@ -1429,7 +1535,9 @@ export interface UserMessage
     bot?: boolean;
     member_openid?: string;
     member_role?: 'owner' | 'admin' | 'member';
+    user_openid?: string;
     union_openid?: string;
+    union_user_account?: string;
   };
   mentions?: (
     | { scope: 'single'; } & this['author']
@@ -1437,7 +1545,12 @@ export interface UserMessage
   )[];
   content: string;
   timestamp: string;
-  group_id: string;
+  /** 旧版群消息事件字段 */
+  group_id?: string;
+  /** 群消息事件中的群 OpenID */
+  group_openid?: string;
+  message_type?: number;
+  ark_data?: UserMessageArkData;
   attachments?: Attachment[]; // not listed in document?
   message_scene?: {
     ext?: string[];
@@ -1840,16 +1953,28 @@ export interface InlineKeyboardRow
   buttons: Button[];
 }
 
+export interface ButtonModal
+{
+  /** 二次确认提示文本，最多 40 字符且不能包含 URL */
+  content?: string;
+  /** 确认按钮文字，最多 4 字符 */
+  confirm_text?: string;
+  /** 取消按钮文字，最多 4 字符 */
+  cancel_text?: string;
+}
+
 export interface Button
 {
   /** 按钮 ID：在一个 keyboard 消息内设置唯一 */
   id?: string;
+  /** 回调按钮分组 ID，同一分组内按钮操作后会互斥变灰 */
+  group_id?: string;
   render_data: {
     /** 按钮上的文字 */
     label: string;
     /** 点击后按钮上的文字 */
     visited_label?: string;
-    /** 按钮样式：0 灰色线框，1 蓝色线框 */
+    /** 按钮样式：0 灰色线框，1 蓝色线框，3 白底红字，4 蓝底白字 */
     style?: number;
   };
   action: {
@@ -1879,6 +2004,8 @@ export interface Button
      * （仅支持手机端版本 8983+ 的单聊场景，桌面端不支持）
      */
     anchor?: number;
+    /** 回调或指令按钮的二次确认配置 */
+    modal?: ButtonModal;
     /** @deprecated */
     click_limit?: number;
     /** @deprecated */

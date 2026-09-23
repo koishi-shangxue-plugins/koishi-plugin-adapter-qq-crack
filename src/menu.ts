@@ -10,6 +10,7 @@ const GROUP_PANEL_REMARK = 'koishi-adapter-qq-crack';
 const PANEL_WRITE_INTERVAL = 6500;
 const PRIVATE_MENU_MAX_ITEMS = 10;
 const GROUP_PANEL_MAX_ITEMS = 20;
+const GROUP_PANEL_MAX_COUNT = 20;
 
 interface MenuSyncState
 {
@@ -132,7 +133,7 @@ function commandsToPrivateMenuItems(commands: Universal.Command[]): QQ.MenuItem[
 // 群聊面板只注册一级指令，避免子指令数量过大
 function commandsToPanelItems(commands: Universal.Command[]): QQ.PanelItem[]
 {
-  return commands.slice(0, GROUP_PANEL_MAX_ITEMS).map((command) =>
+  return commands.map((command) =>
   {
     return {
       name: truncateText(commandText(command.name), 14),
@@ -141,6 +142,16 @@ function commandsToPanelItems(commands: Universal.Command[]): QQ.PanelItem[]
       only_admin: false,
     };
   });
+}
+
+function splitPanelItems(items: QQ.PanelItem[]): QQ.PanelItem[][]
+{
+  const chunks: QQ.PanelItem[][] = [];
+  for (let index = 0; index < items.length; index += GROUP_PANEL_MAX_ITEMS)
+  {
+    chunks.push(items.slice(index, index + GROUP_PANEL_MAX_ITEMS));
+  }
+  return chunks;
 }
 
 // 平台返回字段可能缺省，比较前先归一到稳定结构
@@ -235,19 +246,24 @@ function mergeMenuItems(existing: QQ.MenuItem[], desired: QQ.MenuItem[]): QQ.Men
   return result;
 }
 
-function mergePanelItems(existing: QQ.PanelItem[], desired: QQ.PanelItem[]): QQ.PanelItem[]
+function appendPanelItems(existing: QQ.PanelItem[], desired: QQ.PanelItem[])
 {
   const result = [...existing];
   const seen = new Set(result.map(panelItemKey));
+  const remaining: QQ.PanelItem[] = [];
   for (const item of desired)
   {
-    if (result.length >= GROUP_PANEL_MAX_ITEMS) break;
     const key = panelItemKey(item);
     if (seen.has(key)) continue;
+    if (result.length >= GROUP_PANEL_MAX_ITEMS)
+    {
+      remaining.push(item);
+      continue;
+    }
     result.push(item);
     seen.add(key);
   }
-  return result;
+  return { items: result, remaining };
 }
 
 function removeMenuItems(items: QQ.MenuItem[], removed: QQ.MenuItem[]): QQ.MenuItem[]
@@ -270,8 +286,17 @@ function isMenuEqual(current: QQ.Menu | undefined, desired: QQ.MenuItem[])
 function isQuantityLimitError(error: unknown)
 {
   if (!error || typeof error !== 'object') return false;
-  const response = (error as { response?: { data?: { err_code?: number; code?: number; }; }; }).response;
-  return response?.data?.err_code === 40030013 || response?.data?.code === 30013;
+  const detail = error as {
+    code?: number;
+    err?: number;
+    response?: { data?: { err_code?: number; code?: number; err?: number; }; };
+  };
+  const data = detail.response?.data;
+  return detail.code === 40030013
+    || detail.err === 40030013
+    || data?.err_code === 40030013
+    || data?.code === 40030013
+    || data?.err === 40030013;
 }
 
 export class MenuManager
@@ -279,6 +304,7 @@ export class MenuManager
   private syncPromise?: Promise<void>;
   private disposed = false;
   private lastPanelWriteAt = 0;
+  private panelWriteQueue: Promise<void> = Promise.resolve();
   private stateLoaded = false;
   private state: MenuSyncState = {
     privateMenu: [],
@@ -320,6 +346,7 @@ export class MenuManager
       if (isQuantityLimitError(error))
       {
         logDebug(this.bot.config, '同步群聊指令面板失败：%o', error);
+        this.bot.logger.warn('同步群聊指令面板失败：QQ 指令面板数量超出限制');
       } else
       {
         this.bot.logger.warn('同步群聊指令面板失败：%o', error);
@@ -345,6 +372,7 @@ export class MenuManager
       if (isQuantityLimitError(error))
       {
         logDebug(this.bot.config, '同步群聊斜杠指令失败：%o', error);
+        this.bot.logger.warn('同步群聊斜杠指令失败：QQ 指令面板数量超出限制');
       } else
       {
         this.bot.logger.warn('同步群聊斜杠指令失败：%o', error);
@@ -415,33 +443,8 @@ export class MenuManager
   private async syncGroupPanelsOverride()
   {
     const desiredItems = (this.bot.config.groupPanels ?? []).map(toPanelItem);
-    const records = await this.listGroupPanels();
-    // 覆盖模式：群聊场景只保留一个与配置项完全一致的全局面板
-    const matching = desiredItems.length
-      ? records.find(record => record.target_type === 'all' && isDeepStrictEqual(normalizePanelItems(record.panel?.items), normalizePanelItems(desiredItems)))
-      : undefined;
-
-    let createdPanelId: string | undefined;
-    if (desiredItems.length && !matching)
-    {
-      if (this.disposed) return;
-      await this.waitForPanelWriteSlot();
-      if (this.disposed) return;
-      const created = await this.createGroupPanelWithFallback(desiredItems);
-      createdPanelId = created.panel_id;
-      logDebug(this.bot.config, 'group panel created: %s', createdPanelId);
-    }
-
-    for (const record of records)
-    {
-      if (this.disposed) return;
-      if (matching && record.panel_id === matching.panel_id) continue;
-      if (createdPanelId && record.panel_id === createdPanelId) continue;
-      await this.waitForPanelWriteSlot();
-      if (this.disposed) return;
-      await this.bot.internal.deletePanel(record.panel_id);
-      logDebug(this.bot.config, 'group panel deleted: %s', record.panel_id);
-    }
+    await this.replaceGroupPanels(desiredItems, 'group panel');
+    // 覆盖模式会按配置重建群聊面板。
     if (this.disposed) return;
     this.state.groupPanels = this.bot.config.groupPanels ?? [];
     await this.saveState();
@@ -456,69 +459,7 @@ export class MenuManager
 
     // 合并模式：配置和上次本地快照一致时，不再调用平台接口
     if (isDeepStrictEqual(currentConfig, previousConfig)) return;
-
-    const records = await this.listGroupPanels();
-    const snapshots: GroupPanelSnapshot[] = records
-      .filter(record => record.target_type === 'all')
-      .map(record => ({
-        record,
-        items: record.panel?.items ?? [],
-        changed: false,
-      }));
-
-    // 先从平台面板中移除上次由配置项添加、这次已被删除的指令
-    for (const snapshot of snapshots)
-    {
-      const nextItems = removePanelItems(snapshot.items, previousItems);
-      if (nextItems.length !== snapshot.items.length)
-      {
-        snapshot.items = nextItems;
-        snapshot.changed = true;
-      }
-    }
-
-    // 优先选择仍有空位的全局面板，避免第一个面板已满时错过可追加位置
-    const target = snapshots.find(snapshot => snapshot.items.length < GROUP_PANEL_MAX_ITEMS)
-      ?? snapshots[0];
-
-    if (!target && desiredItems.length)
-    {
-      const items = desiredItems.slice(0, GROUP_PANEL_MAX_ITEMS);
-      if (this.disposed) return;
-      await this.waitForPanelWriteSlot();
-      if (this.disposed) return;
-      const created = await this.createGroupPanelWithFallback(items);
-      logDebug(this.bot.config, 'group panel created: %s', created.panel_id);
-      if (this.disposed) return;
-      this.state.groupPanels = currentConfig;
-      await this.saveState();
-      return;
-    }
-
-    if (target)
-    {
-      const mergedItems = mergePanelItems(target.items, desiredItems);
-      if (!isDeepStrictEqual(normalizePanelItems(mergedItems), normalizePanelItems(target.items)))
-      {
-        target.items = mergedItems;
-        target.changed = true;
-      }
-    }
-
-    for (const snapshot of snapshots)
-    {
-      if (!snapshot.changed || this.disposed) continue;
-      await this.waitForPanelWriteSlot();
-      if (this.disposed) return;
-      await this.bot.internal.modifyPanel(snapshot.record.panel_id, {
-        panel: {
-          items: snapshot.items,
-          remark: snapshot.record.panel?.remark ?? '',
-        },
-      });
-      logDebug(this.bot.config, 'group panel merged: %s %o', snapshot.record.panel_id, snapshot.items);
-    }
-
+    await this.mergeGroupPanels(desiredItems, previousItems, 'group panel');
     if (this.disposed) return;
     this.state.groupPanels = currentConfig;
     await this.saveState();
@@ -586,35 +527,70 @@ export class MenuManager
 
   private async syncGroupSlashOverride(desiredItems: QQ.PanelItem[])
   {
-    const records = await this.listGroupPanels();
-    const matching = desiredItems.length
-      ? records.find(record => record.target_type === 'all' && isDeepStrictEqual(normalizePanelItems(record.panel?.items), normalizePanelItems(desiredItems)))
-      : undefined;
+    await this.replaceGroupPanels(desiredItems, 'group slash panel');
+  }
 
-    let createdPanelId: string | undefined;
-    if (desiredItems.length && !matching)
+  private async syncGroupSlashMerge(desiredItems: QQ.PanelItem[], previousItems: QQ.PanelItem[])
+  {
+    await this.mergeGroupPanels(desiredItems, previousItems, 'group slash panel');
+  }
+
+  private async replaceGroupPanels(desiredItems: QQ.PanelItem[], label: string)
+  {
+    const records = await this.listGroupPanels();
+    const chunks = splitPanelItems(desiredItems);
+    const limitedChunks = chunks.slice(0, GROUP_PANEL_MAX_COUNT);
+    if (limitedChunks.length < chunks.length)
     {
+      this.bot.logger.warn('%s: 超出 QQ 20 个面板的限制，仅同步前 %d 个面板', label, GROUP_PANEL_MAX_COUNT);
+    }
+
+    // 先删除非全局面板，给后续创建释放面板配额。
+    for (const record of records)
+    {
+      if (record.target_type === 'all') continue;
+      await this.deletePanelRecord(record, label);
       if (this.disposed) return;
-      await this.waitForPanelWriteSlot();
+    }
+
+    const allRecords = records.filter(record => record.target_type === 'all');
+    const usedPanelIds = new Set<string>();
+
+    for (const items of limitedChunks)
+    {
+      const matching = allRecords.find(record =>
+        !usedPanelIds.has(record.panel_id)
+        && isDeepStrictEqual(normalizePanelItems(record.panel?.items), normalizePanelItems(items)));
+      if (matching)
+      {
+        usedPanelIds.add(matching.panel_id);
+        continue;
+      }
+
+      const reusable = allRecords.find(record => !usedPanelIds.has(record.panel_id));
+      if (reusable)
+      {
+        await this.modifyPanelRecord(reusable, items, label);
+        usedPanelIds.add(reusable.panel_id);
+      } else
+      {
+        const created = await this.createPanelRecord(items, label);
+        if (!created) return;
+        usedPanelIds.add(created.panel_id);
+      }
       if (this.disposed) return;
-      const created = await this.createGroupPanelWithFallback(desiredItems);
-      createdPanelId = created.panel_id;
-      logDebug(this.bot.config, 'group slash panel created: %s', createdPanelId);
     }
 
     for (const record of records)
     {
+      if (record.target_type !== 'all') continue;
+      if (usedPanelIds.has(record.panel_id)) continue;
+      await this.deletePanelRecord(record, label);
       if (this.disposed) return;
-      if (matching && record.panel_id === matching.panel_id) continue;
-      if (createdPanelId && record.panel_id === createdPanelId) continue;
-      await this.waitForPanelWriteSlot();
-      if (this.disposed) return;
-      await this.bot.internal.deletePanel(record.panel_id);
-      logDebug(this.bot.config, 'group slash panel deleted: %s', record.panel_id);
     }
   }
 
-  private async syncGroupSlashMerge(desiredItems: QQ.PanelItem[], previousItems: QQ.PanelItem[])
+  private async mergeGroupPanels(desiredItems: QQ.PanelItem[], previousItems: QQ.PanelItem[], label: string)
   {
     const records = await this.listGroupPanels();
     const snapshots: GroupPanelSnapshot[] = records
@@ -625,6 +601,7 @@ export class MenuManager
         changed: false,
       }));
 
+    // 先移除上次由该适配器管理的指令，再按面板剩余容量补回当前配置。
     for (const snapshot of snapshots)
     {
       const nextItems = removePanelItems(snapshot.items, previousItems);
@@ -635,75 +612,99 @@ export class MenuManager
       }
     }
 
-    const target = snapshots.find(snapshot => snapshot.items.length < GROUP_PANEL_MAX_ITEMS)
-      ?? snapshots[0];
-
-    if (!target && desiredItems.length)
+    let pendingItems = desiredItems;
+    for (const snapshot of snapshots)
     {
-      if (this.disposed) return;
-      await this.waitForPanelWriteSlot();
-      if (this.disposed) return;
-      const created = await this.createGroupPanelWithFallback(desiredItems.slice(0, GROUP_PANEL_MAX_ITEMS));
-      logDebug(this.bot.config, 'group slash panel created: %s', created.panel_id);
-      return;
+      const result = appendPanelItems(snapshot.items, pendingItems);
+      pendingItems = result.remaining;
+      if (!isDeepStrictEqual(normalizePanelItems(result.items), normalizePanelItems(snapshot.items)))
+      {
+        snapshot.items = result.items;
+        snapshot.changed = true;
+      }
+      if (!pendingItems.length) break;
     }
 
-    if (target)
+    const chunks = splitPanelItems(pendingItems);
+    const available = Math.max(0, GROUP_PANEL_MAX_COUNT - records.length);
+    const creatableChunks = chunks.slice(0, available);
+    if (creatableChunks.length < chunks.length)
     {
-      const mergedItems = mergePanelItems(target.items, desiredItems);
-      if (!isDeepStrictEqual(normalizePanelItems(mergedItems), normalizePanelItems(target.items)))
-      {
-        target.items = mergedItems;
-        target.changed = true;
-      }
+      this.bot.logger.warn('%s: 群聊面板已达到 QQ 20 个面板限制，%d 个指令未同步', label, pendingItems.length - creatableChunks.length * GROUP_PANEL_MAX_ITEMS);
     }
 
     for (const snapshot of snapshots)
     {
-      if (!snapshot.changed || this.disposed) continue;
-      await this.waitForPanelWriteSlot();
+      if (!snapshot.changed) continue;
+      await this.modifyPanelRecord(snapshot.record, snapshot.items, label);
       if (this.disposed) return;
-      await this.bot.internal.modifyPanel(snapshot.record.panel_id, {
-        panel: {
-          items: snapshot.items,
-          remark: snapshot.record.panel?.remark ?? '',
-        },
-      });
-      logDebug(this.bot.config, 'group slash panel merged: %s %o', snapshot.record.panel_id, snapshot.items);
+    }
+    for (const items of creatableChunks)
+    {
+      const created = await this.createPanelRecord(items, label);
+      if (!created) return;
+      if (this.disposed) return;
     }
   }
 
-  private async createGroupPanelWithFallback(items: QQ.PanelItem[])
+  private async createPanelRecord(items: QQ.PanelItem[], label: string)
   {
-    try
-    {
-      return await this.bot.internal.createPanel({
-        scope: 'group',
-        target_type: 'all',
-        panel: {
-          items,
-          remark: GROUP_PANEL_REMARK,
-        },
-      });
-    } catch (error)
-    {
-      if (isQuantityLimitError(error) && items.length > 10)
-      {
-        logDebug(this.bot.config, 'group panel item limit hit, retrying with 10 items');
-        return this.createGroupPanelWithFallback(items.slice(0, 10));
-      }
-      throw error;
-    }
+    await this.waitForPanelWriteSlot();
+    if (this.disposed) return;
+    const created = await this.bot.internal.createPanel({
+      scope: 'group',
+      target_type: 'all',
+      panel: {
+        items,
+        remark: GROUP_PANEL_REMARK,
+      },
+    });
+    logDebug(this.bot.config, '%s created: %s', label, created.panel_id);
+    return created;
+  }
+
+  private async modifyPanelRecord(record: QQ.PanelRecord, items: QQ.PanelItem[], label: string)
+  {
+    await this.waitForPanelWriteSlot();
+    if (this.disposed) return;
+    await this.bot.internal.modifyPanel(record.panel_id, {
+      panel: {
+        items,
+        remark: record.panel?.remark ?? GROUP_PANEL_REMARK,
+      },
+    });
+    logDebug(this.bot.config, '%s modified: %s %o', label, record.panel_id, items);
+  }
+
+  private async deletePanelRecord(record: QQ.PanelRecord, label: string)
+  {
+    await this.waitForPanelWriteSlot();
+    if (this.disposed) return;
+    await this.bot.internal.deletePanel(record.panel_id);
+    logDebug(this.bot.config, '%s deleted: %s', label, record.panel_id);
   }
 
   private async waitForPanelWriteSlot()
   {
-    const wait = Math.max(0, this.lastPanelWriteAt + PANEL_WRITE_INTERVAL - Date.now());
-    if (wait > 0)
+    const previous = this.panelWriteQueue;
+    let release!: () => void;
+    this.panelWriteQueue = new Promise<void>((resolve) =>
     {
-      await this.bot.ctx.sleep(wait);
+      release = resolve;
+    });
+    await previous;
+    try
+    {
+      const wait = Math.max(0, this.lastPanelWriteAt + PANEL_WRITE_INTERVAL - Date.now());
+      if (wait > 0)
+      {
+        await this.bot.ctx.sleep(wait);
+      }
+      this.lastPanelWriteAt = Date.now();
+    } finally
+    {
+      release();
     }
-    this.lastPanelWriteAt = Date.now();
   }
 
   private getStatePath()

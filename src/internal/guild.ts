@@ -124,7 +124,7 @@ declare module './internal' {
     getGuildApiPermissions(guildId: string): Promise<{
       apis: QQ.APIPermission[];
     }>;
-    createGuildApiPermissionDemand(guildId: string, data: QQ.APIPermissionDemand): Promise<QQ.APIPermissionDemand>;
+    createGuildApiPermissionDemand(guildId: string, data: QQ.CreateAPIPermissionDemandRequest): Promise<QQ.APIPermissionDemand>;
   }
 }
 
@@ -239,10 +239,10 @@ GuildInternal.define(true, {
   '/channels/{channel.id}/threads/{thread.id}': {
     DELETE: 'removePost',
   },
-  '/guilds/{guild.id}/api_permissions': {
+  '/guilds/{guild.id}/api_permission': {
     GET: 'getGuildApiPermissions',
   },
-  '/guilds/{guild.id}/api_permissions/demand': {
+  '/guilds/{guild.id}/api_permission/demand': {
     POST: 'createGuildApiPermissionDemand',
   },
 });

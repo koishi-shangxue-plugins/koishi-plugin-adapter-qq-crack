@@ -24,6 +24,16 @@ declare module './internal' {
     deletePrivateMessage(userid: string, message_id: string): Promise<any>;
     getGroupInfo(group_openid: string): Promise<QQ.GroupInfo>;
     getBotGroupState(group_openid: string): Promise<QQ.BotGroupState>;
+    getGroupMembers(group_openid: string, params?: Partial<{
+      cursor: string;
+    }>): Promise<QQ.GroupMemberList>;
+    getGroupMember(group_openid: string, member_openid: string): Promise<QQ.GroupMember>;
+    batchRemoveGroupMembers(group_openid: string, data: QQ.BatchRemoveGroupMembersRequest): Promise<QQ.BatchRemoveGroupMembersResponse>;
+    getGroupMemberBlacklist(group_openid: string, params?: Partial<{
+      cursor: string;
+      limit: number;
+    }>): Promise<QQ.GroupMemberBlacklist>;
+    modifyGroupMemberBlacklist(group_openid: string, data: QQ.ModifyGroupMemberBlacklistRequest): Promise<QQ.ModifyGroupMemberBlacklistResponse>;
     getJoinRequestList(group_openid: string, params?: Partial<{
       cursor: string;
       limit: number;
@@ -60,6 +70,7 @@ declare module './internal' {
     }>;
     deletePanel(panel_id: string): Promise<{}>;
     modifyPanelTarget(panel_id: string, data: QQ.ModifyPanelTargetRequest): Promise<{}>;
+    generateUrlLink(data: QQ.GenerateUrlLinkRequest): Promise<QQ.GenerateUrlLinkResponse>;
   }
 }
 
@@ -106,6 +117,19 @@ GroupInternal.define(false, {
   '/v2/groups/{group.openid}/bot_state': {
     GET: 'getBotGroupState',
   },
+  '/v2/groups/{group.openid}/members': {
+    GET: 'getGroupMembers',
+  },
+  '/v2/groups/{group.openid}/members/{member.openid}': {
+    GET: 'getGroupMember',
+  },
+  '/v2/groups/{group.openid}/batch_remove_members': {
+    POST: 'batchRemoveGroupMembers',
+  },
+  '/v2/groups/{group.openid}/member_blacklist': {
+    GET: 'getGroupMemberBlacklist',
+    POST: 'modifyGroupMemberBlacklist',
+  },
   '/v2/groups/{group.openid}/join_request_list': {
     GET: 'getJoinRequestList',
   },
@@ -145,6 +169,9 @@ GroupInternal.define(false, {
   },
   '/v2/panels/{panel.id}/target': {
     PUT: 'modifyPanelTarget',
+  },
+  '/v2/generate_url_link': {
+    POST: 'generateUrlLink',
   },
 });
 

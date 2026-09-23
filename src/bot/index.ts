@@ -18,8 +18,11 @@ interface JoinRequestCache
 
 interface GetAppAccessTokenResult
 {
-  access_token: string;
-  expires_in: number;
+  access_token?: string;
+  /** 平台可能返回数字或数字字符串 */
+  expires_in?: number | string;
+  code?: number;
+  message?: string;
 }
 
 export class QQBot<C extends Context = Context, T extends QQBot.Config = QQBot.Config> extends Bot<C, T>
@@ -112,15 +115,17 @@ export class QQBot<C extends Context = Context, T extends QQBot.Config = QQBot.C
           clientSecret: this.config.secret,
         },
       });
-      if (!result.data.access_token)
+      const { access_token, expires_in } = result.data;
+      const expiresIn = typeof expires_in === 'string' ? Number(expires_in) : expires_in;
+      if (!access_token || typeof expiresIn !== 'number' || !Number.isFinite(expiresIn))
       {
         this.logger.warn(`POST https://bots.qq.com/app/getAppAccessToken response: %o, trace id: %s`, result.data, result.headers.get('x-tps-trace-id'));
-        throw new Error('failed to refresh access token');
+        throw new Error(result.data.message || `failed to refresh access token: ${result.data.code ?? 'unknown code'}`);
       }
-      this._token = result.data.access_token;
+      this._token = access_token;
       this.http.config.headers.Authorization = `QQBot ${this._token}`;
       this._disposeTokenRefresh?.();
-      const delay = Math.max(1000, (result.data.expires_in - 40) * 1000);
+      const delay = Math.max(1000, (expiresIn - 40) * 1000);
       this._disposeTokenRefresh = this.ctx.setTimeout(() =>
       {
         void this._ensureAccessToken().catch((error) =>

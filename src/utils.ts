@@ -224,10 +224,11 @@ export async function decodeGroupMessage(
   const quotedReferenceId = data.message_scene?.ext?.map(extractQuotedReferenceFromExt).find(Boolean);
   const quotedMessageId = resolveMessageIdByReference(quotedReferenceId);
   const quotedContent = extractQuotedContent(data);
+  const groupId = data.group_openid || data.group_id;
   if (quotedMessageId || quotedContent)
   {
-    const quote: Partial<Universal.Message> = quotedMessageId && bot.getMessage
-      ? await bot.getMessage(data.group_id, quotedMessageId).catch(() => ({ id: quotedMessageId }))
+    const quote: Partial<Universal.Message> = quotedMessageId && groupId && bot.getMessage
+      ? await bot.getMessage(groupId, quotedMessageId).catch(() => ({ id: quotedMessageId }))
       : quotedMessageId
         ? { id: quotedMessageId }
         : {};
@@ -309,7 +310,7 @@ export async function decodeGroupMessage(
     date = data.timestamp.slice(0, data.timestamp.indexOf('m=')).trim().replace(/\+(\d{4}) CST/, 'GMT+$1');
   }
   payload.timestamp = new Date(date).valueOf();
-  payload.guild = data.group_id && { id: data.group_id };
+  payload.guild = groupId && { id: groupId };
   const user: Universal.User & { role?: string; } = {
     id: data.author.id,
     name: data.author.username,

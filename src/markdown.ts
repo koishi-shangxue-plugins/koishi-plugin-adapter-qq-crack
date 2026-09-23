@@ -176,6 +176,16 @@ function parseButtonRenderData(value: unknown)
   return result;
 }
 
+function parseButtonModal(value: unknown)
+{
+  if (!isRecord(value)) return;
+  const result: QQ.ButtonModal = {};
+  if (typeof value.content === 'string') result.content = value.content;
+  if (typeof value.confirm_text === 'string') result.confirm_text = value.confirm_text;
+  if (typeof value.cancel_text === 'string') result.cancel_text = value.cancel_text;
+  return Object.keys(result).length ? result : undefined;
+}
+
 function parseButtonAction(value: unknown)
 {
   if (!isRecord(value) || typeof value.type !== 'number' || typeof value.data !== 'string')
@@ -203,6 +213,11 @@ function parseButtonAction(value: unknown)
   if (typeof value.anchor === 'number')
   {
     result.anchor = value.anchor;
+  }
+  const modal = parseButtonModal(value.modal);
+  if (modal)
+  {
+    result.modal = modal;
   }
   if (typeof value.click_limit === 'number')
   {
@@ -238,6 +253,10 @@ function parseButton(value: unknown)
   if (typeof value.id === 'string')
   {
     result.id = value.id;
+  }
+  if (typeof value.group_id === 'string')
+  {
+    result.group_id = value.group_id;
   }
   return result;
 }
@@ -482,6 +501,7 @@ function parseButtonElement(attrs: Dict, children: readonly h[])
     }
   }
   const actionSource = isRecord(attrs.action) ? attrs.action : undefined;
+  const modal = parseButtonModal(actionSource?.modal);
   const action = actionSource && typeof actionSource.type === 'number' && typeof actionSource.data === 'string'
     ? {
       type: actionSource.type,
@@ -490,6 +510,7 @@ function parseButtonElement(attrs: Dict, children: readonly h[])
       ...(typeof actionSource.reply === 'boolean' ? { reply: actionSource.reply } : {}),
       ...(typeof actionSource.enter === 'boolean' ? { enter: actionSource.enter } : {}),
       ...(typeof actionSource.anchor === 'number' ? { anchor: actionSource.anchor } : {}),
+      ...(modal ? { modal } : {}),
       ...(typeof actionSource.click_limit === 'number' ? { click_limit: actionSource.click_limit } : {}),
       ...(typeof actionSource.at_bot_show_channel_list === 'boolean' ? { at_bot_show_channel_list: actionSource.at_bot_show_channel_list } : {}),
       ...(typeof actionSource.unsupport_tips === 'string' ? { unsupport_tips: actionSource.unsupport_tips } : {}),
@@ -517,6 +538,7 @@ function parseButtonElement(attrs: Dict, children: readonly h[])
   }
   return {
     ...(typeof attrs.id === 'string' ? { id: attrs.id } : {}),
+    ...(typeof attrs.group_id === 'string' ? { group_id: attrs.group_id } : {}),
     render_data,
     action,
   } satisfies QQ.Button;

@@ -7,8 +7,7 @@ type IntentKey = keyof typeof QQ.Intents;
 
 const defaultIntentKeys = [
   'GUILDS',
-  'GUILD_MEMBER_ADD',
-  'GUILD_MEMBER_REMOVE',
+  'GROUP_MEMBER_EVENT',
   'GUILD_MEMBERS',
   'GUILD_MESSAGE_REACTIONS',
   'DIRECT_MESSAGES',

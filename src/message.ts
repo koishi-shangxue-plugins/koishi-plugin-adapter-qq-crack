@@ -719,6 +719,7 @@ export class QQMessageEncoder<C extends Context = Context> extends MessageEncode
 
     const result: QQ.Button = {
       ...(typeof attrs.id === 'string' ? { id: attrs.id } : {}),
+      ...(typeof attrs.group_id === 'string' ? { group_id: attrs.group_id } : {}),
       render_data: {
         label: String(displayLabel || ''),
         visited_label: String(displayLabel || ''),

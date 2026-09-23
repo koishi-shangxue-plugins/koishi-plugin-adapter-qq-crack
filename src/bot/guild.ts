@@ -50,8 +50,15 @@ export class QQGuildBot<C extends Context = Context> extends Bot<C>
 
   async getGuildList(next?: string)
   {
-    const guilds = await this.internal.getGuilds();
-    return { data: guilds.map(decodeGuild) };
+    const limit = 100;
+    const guilds = await this.internal.getGuilds({
+      ...(next ? { after: next } : {}),
+      limit,
+    });
+    return {
+      data: guilds.map(decodeGuild),
+      next: guilds.length === limit ? guilds[guilds.length - 1].id : undefined,
+    };
   }
 
   async getGuild(guildId: string)
