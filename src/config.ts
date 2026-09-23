@@ -37,10 +37,8 @@ export interface BaseConfig extends QQ.Options
   path?: string;
   gatewayUrl?: string;
   privateSlash?: boolean;
-  privateMenuOverride?: boolean;
   privateMenu?: QQ.MenuItemConfig[];
   groupSlash?: boolean;
-  groupPanelsOverride?: boolean;
   groupPanels?: QQ.PanelItemConfig[];
 }
 
@@ -151,12 +149,11 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.intersect([
     Schema.object({
       privateSlash: Schema.boolean().default(false).description('是否在私聊页面注册斜杠指令（koishi指令）。关闭后 可以通过配置项自定义指令菜单。'),
-      privateMenuOverride: Schema.boolean().default(false).description('是否覆盖并删除冗余的单聊菜单。关闭时仅向原有菜单追加配置项。'),
     }).description('私聊指令菜单'),
     Schema.union([
       Schema.object({
         privateSlash: Schema.const(false),
-        privateMenu: Schema.array(privateMenuItemSchema()).max(10).default([]).description('单聊自定义菜单。'),
+        privateMenu: Schema.array(privateMenuItemSchema()).max(10).default([]).description('单聊自定义菜单；配置非空时会完全覆盖现有菜单。'),
       }),
       Schema.object({
         privateSlash: Schema.const(true).required(),
@@ -166,12 +163,11 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.intersect([
     Schema.object({
       groupSlash: Schema.boolean().default(false).description('是否在群聊页面注册斜杠指令（koishi指令）。关闭后 可以通过配置项自定义指令菜单。'),
-      groupPanelsOverride: Schema.boolean().default(false).description('是否覆盖并删除冗余的群聊指令面板。关闭时仅向原有面板追加配置项。'),
     }).description('群聊指令菜单'),
     Schema.union([
       Schema.object({
         groupSlash: Schema.const(false),
-        groupPanels: Schema.array(groupPanelItemSchema()).max(20).default([]).description('群聊指令面板。'),
+        groupPanels: Schema.array(groupPanelItemSchema()).max(20).default([]).description('群聊指令面板；配置非空时会完全覆盖现有面板。'),
       }),
       Schema.object({
         groupSlash: Schema.const(true).required(),
