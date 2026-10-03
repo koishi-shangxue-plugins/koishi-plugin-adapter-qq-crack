@@ -80,12 +80,19 @@ export class QQGuildMessageEncoder<C extends Context = Context> extends MessageE
   fileUrl: string;
   private passiveId: string;
   private passiveEventId: string;
+  private useMarkdown = false;
+  private plainTextOnly = true;
+  private rows: QQ.Button[][] = [];
+  private customRequest: QQMarkdownRequest;
+  private customAutoStream = false;
   reference: string;
   private retry = false;
   // 先文后图
   async flush()
   {
-    if (!this.content.trim().length && !this.file && !this.fileUrl)
+    this.trimButtons();
+    const hasFile = Boolean(this.file || this.fileUrl);
+    if (!this.content.trim().length && !hasFile && !this.rows.flat().length && !this.customRequest)
     {
       return;
     }
@@ -102,6 +109,84 @@ export class QQGuildMessageEncoder<C extends Context = Context> extends MessageE
     }
     if (this.passiveId) msg_id = this.passiveId;
 
+    // 子频道与频道私信共用同一份请求体：自定义载荷优先，否则按累积文本构造。
+    const data: QQ.Message.ChannelRequest = this.customRequest ? {
+      ...this.customRequest,
+    } : {
+      content: this.content,
+    };
+    // 群聊/C2C 语义的字段在子频道下没有对应能力，避免从 qq:json 之类的载荷里泄漏出去。
+    const raw = data as Dict;
+    delete raw.msg_seq;
+    delete raw.media;
+    if (this.reference && !data.message_reference)
+    {
+      data.message_reference = {
+        message_id: resolveMessageReference(this.reference),
+      };
+    }
+    if (msg_id) data.msg_id = msg_id;
+    if (this.passiveEventId) data.event_id = this.passiveEventId;
+
+    // 官方没有给出频道流式能力，因此必须显式勾选对应开关才会携带 stream。
+    const autoStreamTarget: QQ.AutoStreamText = isPrivate ? 'private' : 'guild';
+    const streamEnabled = this.bot.parent.config.autoStreamText.includes(autoStreamTarget);
+    const autoStreamText = Boolean(
+      streamEnabled
+      && !this.customRequest
+      && !this.useMarkdown
+      && !hasFile
+      && !this.rows.flat().length
+      && this.plainTextOnly
+      && !!this.options?.session
+      && this.content.trim().length
+    );
+    if (!this.customRequest && !hasFile)
+    {
+      if (this.useMarkdown)
+      {
+        data.msg_type = QQ.Message.Type.MARKDOWN;
+        delete data.content;
+        data.markdown = {
+          content: this.content || ' ',
+        };
+        if (this.rows.length)
+        {
+          data.keyboard = {
+            content: {
+              rows: this.exportButtons(),
+            },
+          };
+        }
+      }
+      if (autoStreamText)
+      {
+        data.msg_type = QQ.Message.Type.MARKDOWN;
+        delete data.content;
+        data.markdown = {
+          content: escapeMarkdown(this.content) || ' ',
+        };
+        delete data.keyboard;
+      }
+    }
+    // 官方只要求频道请求「至少有一个字段」，ark / 模板按钮载荷里的 content 占位在频道域没有依据。
+    if (!isPrivate && typeof data.content === 'string' && !data.content.trim().length)
+    {
+      delete data.content;
+    }
+    // bot_appid 是子频道按钮的字段，群聊域的 C2C（`private:`）没有这个概念。
+    if (!isPrivate && data.keyboard)
+    {
+      data.bot_appid = this.bot.parent.config.id;
+    }
+    const shouldAutoStream = streamEnabled && (this.customAutoStream || autoStreamText);
+    if (!streamEnabled) delete raw.stream;
+    if (!shouldAutoStream && !data.stream)
+    {
+      clearAutoStream(this.options.session);
+    }
+    applyAutoStream(this.options.session, data, shouldAutoStream);
+
     let r: Partial<QQ.Message.Response>;
     logDebug(this.bot, 'use form data %s', useFormData);
     try
@@ -110,15 +195,9 @@ export class QQGuildMessageEncoder<C extends Context = Context> extends MessageE
       {
         const openid = fromPrivateChannelId(this.channelId);
         const payload: QQ.Message.Request = {
-          content: this.content,
-          msg_type: QQ.Message.Type.TEXT,
-          msg_id,
+          ...data,
+          msg_type: data.msg_type ?? QQ.Message.Type.TEXT,
           event_id: this.passiveEventId,
-          ...(this.reference ? {
-            message_reference: {
-              message_id: resolveMessageReference(this.reference),
-            },
-          } : {}),
         };
         if (this.file)
         {
@@ -168,23 +247,9 @@ export class QQGuildMessageEncoder<C extends Context = Context> extends MessageE
         r = await this.bot.http.post<QQ.Message>(endpoint, form);
       } else
       {
-        const payload: QQ.Message.ChannelRequest = {
-          ...{
-            content: this.content,
-            msg_id,
-            image: this.fileUrl,
-          },
-          ...(this.reference ? {
-            message_reference: {
-              message_id: resolveMessageReference(this.reference),
-            },
-          } : {}),
-          ...(this.passiveEventId ? {
-            event_id: this.passiveEventId,
-          } : {}),
-        };
-        if (isDirect) r = await this.bot.internal.sendDM(this.channelId.split('_')[0], payload);
-        else r = await this.bot.internal.sendMessage(this.channelId, payload);
+        if (this.fileUrl) data.image = this.fileUrl;
+        if (isDirect) r = await this.bot.internal.sendDM(this.channelId.split('_')[0], data);
+        else r = await this.bot.internal.sendMessage(this.channelId, data);
       }
     } catch (e)
     {
@@ -225,6 +290,7 @@ export class QQGuildMessageEncoder<C extends Context = Context> extends MessageE
     if (r?.id)
     {
       registerMessageReference(r.id, r.ext_info?.ref_idx);
+      updateAutoStream(this.options.session, data, r.id);
       const message = buildSendMessage(
         this.bot,
         r,
@@ -271,6 +337,11 @@ export class QQGuildMessageEncoder<C extends Context = Context> extends MessageE
     this.filename = null;
     this.fileUrl = null;
     this.reference = null;
+    this.useMarkdown = false;
+    this.plainTextOnly = true;
+    this.rows = [];
+    this.customRequest = null;
+    this.customAutoStream = false;
     this.retry = false;
   }
 
@@ -311,12 +382,135 @@ export class QQGuildMessageEncoder<C extends Context = Context> extends MessageE
     this.fileUrl = null;
   }
 
+  private enterMarkdown()
+  {
+    this.plainTextOnly = false;
+    if (!this.useMarkdown)
+    {
+      this.content = escapeMarkdown(this.content);
+      this.useMarkdown = true;
+    }
+  }
+
+  private appendMarkdown(content: string)
+  {
+    if (!content) return;
+    this.enterMarkdown();
+    this.content += content;
+  }
+
+  // 与群聊编码器同构的按钮构造：子频道 markdown 不做 data: 内联图片的拆分上传。
+  decodeButton(attrs: Dict, label: string)
+  {
+    const attrAction = (attrs.action && typeof attrs.action === 'object') ? attrs.action : {};
+    const attrRenderData = (attrs.render_data && typeof attrs.render_data === 'object') ? attrs.render_data : {};
+    const attrPermission = (attrs.permission && typeof attrs.permission === 'object')
+      ? attrs.permission
+      : (attrAction.permission && typeof attrAction.permission === 'object' ? attrAction.permission : undefined);
+
+    const type = attrs.type ?? attrAction.type;
+    const text = typeof attrs.text === 'string' ? attrs.text : undefined;
+
+    let actionData = attrs.data ?? attrAction.data;
+    if (actionData === undefined || actionData === null || actionData === '')
+    {
+      if (type === 'link' || type === 0)
+      {
+        actionData = attrs.href ?? attrAction.data ?? '';
+      } else
+      {
+        actionData = text || label || (typeof attrs.id === 'string' ? attrs.id : '');
+      }
+    }
+
+    const displayLabel = attrRenderData.label || label || text || actionData;
+
+    const result: QQ.Button = {
+      ...(typeof attrs.id === 'string' ? { id: attrs.id } : {}),
+      ...(typeof attrs.group_id === 'string' ? { group_id: attrs.group_id } : {}),
+      render_data: {
+        label: String(displayLabel || ''),
+        visited_label: String(displayLabel || ''),
+        style: attrRenderData.style ?? (typeof attrs.style === 'number' ? attrs.style : 1),
+      },
+      action: {
+        type: typeof type === 'number' ? type : (type === 'link' ? 0 : 2),
+        permission: attrPermission || { type: 2 },
+        data: String(actionData || ''),
+        ...(type !== 'link' && type !== 0 ? { enter: true } : {}),
+      },
+    };
+
+    Object.assign(result.action, attrAction);
+    Object.assign(result.render_data, attrRenderData);
+
+    if (!result.render_data.label) result.render_data.label = String(result.action.data || '');
+    if (!result.render_data.visited_label) result.render_data.visited_label = result.render_data.label;
+    if (result.render_data.style === undefined) result.render_data.style = 1;
+
+    return result;
+  }
+
+  lastRow()
+  {
+    if (!this.rows.length) this.rows.push([]);
+    let last = this.rows[this.rows.length - 1];
+    if (last.length >= 5)
+    {
+      this.rows.push([]);
+      last = this.rows[this.rows.length - 1];
+    }
+    return last;
+  }
+
+  trimButtons()
+  {
+    while (this.rows.length && this.rows[this.rows.length - 1].length === 0) this.rows.pop();
+  }
+
+  exportButtons()
+  {
+    return this.rows.map(v => ({
+      buttons: v,
+    }));
+  }
+
   async visit(element: h)
   {
     const { type, attrs, children } = element;
-    if (type === 'text')
+    if (type === 'markdown')
     {
-      this.content += attrs.content;
+      this.appendMarkdown(extractMarkdownText(children));
+      return;
+    }
+    if (type === 'button' || type === 'qq:button')
+    {
+      this.enterMarkdown();
+      this.lastRow().push(this.decodeButton(attrs, extractMarkdownText(children)));
+      return;
+    }
+
+    const arkPayload = parseQQArkElement(element);
+    const customPayload = parseQQMarkdownElement(element);
+    if (arkPayload)
+    {
+      await this.flush();
+      this.customRequest = arkPayload.request;
+      clearAutoStream(this.options.session);
+      await this.flush();
+    } else if (customPayload)
+    {
+      await this.flush();
+      this.customRequest = customPayload.request;
+      this.customAutoStream = customPayload.autoStream;
+      if (!customPayload.autoStream && !customPayload.request.stream)
+      {
+        clearAutoStream(this.options.session);
+      }
+      await this.flush();
+    } else if (type === 'text')
+    {
+      this.content += this.useMarkdown ? escapeMarkdown(attrs.content) : attrs.content;
     } else if (type === 'at')
     {
       switch (attrs.type)
@@ -356,8 +550,20 @@ export class QQGuildMessageEncoder<C extends Context = Context> extends MessageE
       await this.flush();
       await this.render(children);
       await this.flush();
+    } else if (type === 'button-group')
+    {
+      this.enterMarkdown();
+      this.rows.push([]);
+      await this.render(children);
+    } else if (type === 'a')
+    {
+      this.content += attrs.href || extractMarkdownText(children);
+    } else if (type === 'i' || type === 'em' || type === 'b' || type === 'strong')
+    {
+      await this.render(children);
     } else
     {
+      this.plainTextOnly = false;
       await this.render(children);
     }
   }

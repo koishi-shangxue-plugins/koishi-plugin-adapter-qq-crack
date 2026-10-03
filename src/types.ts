@@ -101,7 +101,7 @@ export enum Intents
 }
 
 /** 自动流式文本的会话类型 */
-export type AutoStreamText = 'private' | 'group';
+export type AutoStreamText = 'private' | 'group' | 'guild';
 
 export enum Opcode
 {
@@ -300,6 +300,20 @@ export interface AudioAction
   text: string;
 }
 
+/** 音频控制状态：0 播放，1 暂停，2 继续，3 停止 */
+export type AudioStatus = 0 | 1 | 2 | 3;
+
+/** 语音子频道音频控制请求体 */
+export interface AudioControl
+{
+  /** 音频数据的 url，status 为 0 时传 */
+  audio_url?: string;
+  /** 状态文本（比如：简单爱-周杰伦），status 为 0 时传 */
+  text?: string;
+  /** 音频控制状态 */
+  status: AudioStatus;
+}
+
 export interface MessageAudited
 {
   /** 消息审核 id */
@@ -454,6 +468,8 @@ export namespace Message
       ref_idx?: string;
     };
   }
+  /** 子频道消息请求体：官方字段只有 content / embed / ark / message_reference / image / msg_id / event_id / markdown，
+   * 但跨场景的「消息类型」文档把 msg_type 定义为发送格式开关，且子频道 Markdown 需要它；按钮为子频道可用的附加字段。 */
   export interface ChannelRequest
   {
     content?: string;
@@ -467,6 +483,11 @@ export namespace Message
     msg_id?: string;
     event_id?: string;
     markdown?: Markdown;
+    msg_type?: Type;
+    keyboard?: Partial<MessageKeyboard>;
+    /** 带按钮时由适配器填入机器人 AppID */
+    bot_appid?: string;
+    stream?: Stream;
   }
   export interface Request
   {
@@ -701,6 +722,14 @@ export interface ChannelPermissions
   /** 用户拥有的子频道权限 */
   permissions: string;
 }
+
+/** 子频道用户权限与身份组权限的修改请求体 */
+export type UpdateChannelPermissions = {
+  /** 要添加的子频道权限值 */
+  add?: string;
+  /** 要删除的子频道权限值 */
+  remove?: string;
+};
 
 export enum ChannelPrivateType
 {

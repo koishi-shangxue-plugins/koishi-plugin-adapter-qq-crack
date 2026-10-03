@@ -6,9 +6,14 @@ interface StreamState
   index: number;
 }
 
+interface StreamableRequest
+{
+  stream?: QQ.Message.Stream;
+}
+
 const streamStates = new WeakMap<object, StreamState>();
 
-export function applyAutoStream(session: object | undefined, request: QQ.Message.Request, enabled?: boolean)
+export function applyAutoStream(session: object | undefined, request: StreamableRequest, enabled?: boolean)
 {
   if (!enabled || request.stream || !session) return;
   const state = streamStates.get(session);
@@ -20,7 +25,7 @@ export function applyAutoStream(session: object | undefined, request: QQ.Message
   };
 }
 
-export function updateAutoStream(session: object | undefined, request: QQ.Message.Request, messageId?: string)
+export function updateAutoStream(session: object | undefined, request: StreamableRequest, messageId?: string)
 {
   if (!session || !request.stream) return;
   if (request.stream.reset || request.stream.state >= 10)

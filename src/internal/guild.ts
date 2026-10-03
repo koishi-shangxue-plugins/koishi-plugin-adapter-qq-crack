@@ -23,6 +23,12 @@ declare module './internal' {
     getChannelOnlineNums(channel_id: string): Promise<{
       online_nums: number;
     }>;
+    /** 机器人上麦 */
+    setChannelMic(channel_id: string): Promise<void>;
+    /** 机器人下麦 */
+    removeChannelMic(channel_id: string): Promise<void>;
+    /** 控制语音子频道内的音频播放 */
+    controlChannelAudio(channel_id: string, data: QQ.AudioControl): Promise<void>;
     getGuildMembers(guild_id: string, params?: Partial<{
       after: string;
       limit: number;
@@ -55,15 +61,9 @@ declare module './internal' {
       channel: { id: string; };
     }): Promise<void>;
     getChannelMemberPermissions(channel_id: string, user_id: string): Promise<QQ.ChannelPermissions>;
-    modifyChannelMemberPermissions(channel_id: string, user_id: string, params: {
-      add: string;
-      remove: string;
-    }): Promise<QQ.ChannelPermissions>;
+    modifyChannelMemberPermissions(channel_id: string, user_id: string, params: QQ.UpdateChannelPermissions): Promise<QQ.ChannelPermissions>;
     getChannelRole(channel_id: string, role_id: string): Promise<QQ.ChannelPermissions>;
-    modifyChannelRole(channel_id: string, role_id: string, params: {
-      add: string;
-      remove: string;
-    }): Promise<void>;
+    modifyChannelRole(channel_id: string, role_id: string, params: QQ.UpdateChannelPermissions): Promise<void>;
     getMessage(channelId: string, messageId: string): Promise<{ message: QQ.Message; }>;
     sendMessage(channelId: string, data: QQ.Message.ChannelRequest): Promise<QQ.Message>;
     sendDM(guildId: string, data: QQ.Message.ChannelRequest): Promise<QQ.Message>;
@@ -79,13 +79,13 @@ declare module './internal' {
       hidetip?: boolean;
     }): Promise<void>;
     muteGuildOrMembers(guildId: string, data: {
-      mute_seconds: number;
+      mute_seconds: number | string;
       user_ids?: string[];
     }): Promise<{
       user_ids?: string[];
     }>;
     muteGuildMember(guildId: string, userId: string, data: {
-      mute_seconds: number;
+      mute_seconds: number | string;
     }): Promise<void>;
     createGuildAnnounce(guildId: string, params: Partial<QQ.CreateGuildAnnounceParams>): Promise<QQ.Announces>;
     removeGuildAnnounce(guildId: string, messageId: string): Promise<void>;
@@ -150,6 +150,13 @@ GuildInternal.define(true, {
   '/channels/{channel.id}/online_nums': {
     GET: 'getChannelOnlineNums',
   },
+  '/channels/{channel.id}/mic': {
+    PUT: 'setChannelMic',
+    DELETE: 'removeChannelMic',
+  },
+  '/channels/{channel.id}/audio': {
+    POST: 'controlChannelAudio',
+  },
   '/guilds/{guild.id}/members': {
     GET: 'getGuildMembers',
   },
@@ -190,7 +197,7 @@ GuildInternal.define(true, {
   '/dms/{guild.id}/messages': {
     POST: 'sendDM',
   },
-  '/guilds/{guild.id}/messages/setting': {
+  '/guilds/{guild.id}/message/setting': {
     GET: 'getMessageSetting',
   },
   '/users/@me/dms': {
@@ -237,6 +244,7 @@ GuildInternal.define(true, {
     PUT: 'createPost',
   },
   '/channels/{channel.id}/threads/{thread.id}': {
+    GET: 'getThread',
     DELETE: 'removePost',
   },
   '/guilds/{guild.id}/api_permission': {
