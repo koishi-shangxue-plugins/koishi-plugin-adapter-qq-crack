@@ -178,6 +178,7 @@ export const Config: Schema<Config> = Schema.intersect([
     autoStreamText: Schema.array(Schema.union([
       Schema.const('private').description('私聊'),
       Schema.const('group').description('群聊'),
+      Schema.const('guild').description('频道（官方未给出频道流式能力，勾选后可能无效）'),
     ])).role('checkbox').description('选择使用原生 Markdown 流式发送纯文本消息的会话类型。').default([]),
     useMarkdownIfAt: Schema.boolean().description('在包含 `<at>` 元素时使用 Markdown 格式，禁用将忽略 `<at>` 元素。').default(true),
     loggerinfo: Schema.boolean().default(false).description('调试模式').experimental(),

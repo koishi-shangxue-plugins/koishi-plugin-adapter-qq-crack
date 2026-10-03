@@ -14,6 +14,29 @@ export namespace QQGuildBot
   }
 }
 
+/** updateChannel 可改的字段：Universal 字段 + 官方 PATCH 支持的 private_type / speak_permission */
+export type GuildChannelUpdate = Partial<Universal.Channel> & Partial<Pick<QQ.Channel,
+  'private_type' | 'speak_permission'>>;
+
+/** createChannel 除 updateChannel 的字段外，还能在建频道时指定的 QQ 子频道字段 */
+export type GuildChannelData = GuildChannelUpdate & Partial<Pick<QQ.Channel,
+  'sub_type' | 'application_id'>> & {
+    private_user_ids?: string[];
+  };
+
+/** 子频道专属能力只对真实子频道有意义，私聊频道与频道私信一律拒绝 */
+function assertGuildChannelId(channelId: string, method: string)
+{
+  if (isPrivateChannelId(channelId))
+  {
+    throw new Error(`${method} 仅支持子频道，不支持私聊频道 ${channelId}`);
+  }
+  if (channelId.includes('_'))
+  {
+    throw new Error(`${method} 仅支持子频道，不支持频道私信 ${channelId}`);
+  }
+}
+
 export class QQGuildBot<C extends Context = Context> extends Bot<C>
 {
   declare parent: QQBot;
@@ -82,7 +105,7 @@ export class QQGuildBot<C extends Context = Context> extends Bot<C>
     return decodeChannel(channel);
   }
 
-  async createChannel(guildId: string, data: Partial<Universal.Channel>)
+  async createChannel(guildId: string, data: GuildChannelData)
   {
     const channel = await this.internal.createGuildChannel(guildId, {
       name: data.name,
@@ -92,12 +115,91 @@ export class QQGuildBot<C extends Context = Context> extends Bot<C>
             : QQ.ChannelType.TEXT,
       parent_id: data.parentId,
       position: data.position,
-      sub_type: 0,
-      private_type: 0,
-      speak_permission: 1,
-      private_user_ids: [],
+      sub_type: data.sub_type ?? QQ.ChannelSubType.IDLE,
+      private_type: data.private_type ?? QQ.ChannelPrivateType.PUBLIC,
+      speak_permission: data.speak_permission ?? QQ.ChannelSpeakPermission.ALL,
+      private_user_ids: data.private_user_ids ?? [],
+      application_id: data.application_id,
     });
     return decodeChannel(channel);
+  }
+
+  // Koishi 的 Universal 协议把 updateChannel 的返回值固定为 void，因此这里不返回 decodeChannel 的结果
+  async updateChannel(channelId: string, data: GuildChannelUpdate): Promise<void>
+  {
+    assertGuildChannelId(channelId, 'updateChannel');
+    await this.internal.modifyChannel(channelId, {
+      name: data.name,
+      position: data.position,
+      parent_id: data.parentId,
+      private_type: data.private_type,
+      speak_permission: data.speak_permission,
+    });
+  }
+
+  async deleteChannel(channelId: string): Promise<void>
+  {
+    assertGuildChannelId(channelId, 'deleteChannel');
+    await this.internal.deleteChannel(channelId);
+  }
+
+  /** 映射为频道全员禁言：QQ 没有子频道级禁言，enable 为 false 时传 '0' 解除 */
+  async muteChannel(channelId: string, guildId?: string, enable = true): Promise<void>
+  {
+    assertGuildChannelId(channelId, 'muteChannel');
+    const targetGuildId = guildId ?? (await this.internal.getChannel(channelId)).guild_id;
+    await this.internal.muteGuildOrMembers(targetGuildId, {
+      mute_seconds: enable === false ? '0' : '2592000',
+    });
+  }
+
+  async getChannelOnlineNums(channelId: string): Promise<number>
+  {
+    assertGuildChannelId(channelId, 'getChannelOnlineNums');
+    const { online_nums } = await this.internal.getChannelOnlineNums(channelId);
+    return online_nums;
+  }
+
+  async getChannelUserPermissions(channelId: string, userId: string): Promise<QQ.ChannelPermissions>
+  {
+    assertGuildChannelId(channelId, 'getChannelUserPermissions');
+    return this.internal.getChannelMemberPermissions(channelId, userId);
+  }
+
+  async setChannelUserPermissions(channelId: string, userId: string, data: QQ.UpdateChannelPermissions): Promise<void>
+  {
+    assertGuildChannelId(channelId, 'setChannelUserPermissions');
+    await this.internal.modifyChannelMemberPermissions(channelId, userId, data);
+  }
+
+  async getChannelRolePermissions(channelId: string, roleId: string): Promise<QQ.ChannelPermissions>
+  {
+    assertGuildChannelId(channelId, 'getChannelRolePermissions');
+    return this.internal.getChannelRole(channelId, roleId);
+  }
+
+  async setChannelRolePermissions(channelId: string, roleId: string, data: QQ.UpdateChannelPermissions): Promise<void>
+  {
+    assertGuildChannelId(channelId, 'setChannelRolePermissions');
+    await this.internal.modifyChannelRole(channelId, roleId, data);
+  }
+
+  async setChannelMic(channelId: string): Promise<void>
+  {
+    assertGuildChannelId(channelId, 'setChannelMic');
+    await this.internal.setChannelMic(channelId);
+  }
+
+  async removeChannelMic(channelId: string): Promise<void>
+  {
+    assertGuildChannelId(channelId, 'removeChannelMic');
+    await this.internal.removeChannelMic(channelId);
+  }
+
+  async controlChannelAudio(channelId: string, data: QQ.AudioControl): Promise<void>
+  {
+    assertGuildChannelId(channelId, 'controlChannelAudio');
+    await this.internal.controlChannelAudio(channelId, data);
   }
 
   async getGuildMemberList(guildId: string, next?: string): Promise<Universal.List<Universal.GuildMember>>
