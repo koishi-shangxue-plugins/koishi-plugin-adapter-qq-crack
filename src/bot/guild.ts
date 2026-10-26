@@ -57,12 +57,14 @@ export class QQGuildBot<C extends Context = Context> extends Bot<C>
 
   get status()
   {
-    return this.parent.status;
+    // 构造阶段 parent 尚未赋值，改从构造配置中获取父 Bot
+    return (this.parent ?? this.config.parent).status;
   }
 
   set status(status)
   {
-    this.parent.status = status;
+    const parent = this.parent ?? this.config.parent;
+    parent.status = status;
   }
 
   async getUser(userId: string, guildId?: string): Promise<Universal.User>
