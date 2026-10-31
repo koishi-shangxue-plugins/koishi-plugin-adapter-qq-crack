@@ -383,6 +383,26 @@ export namespace Message
     ARK = 3,
     EMBED = 4,
     MEDIA = 7,
+    CARD = 8,
+  }
+  export type MessageCardType = 'tuwen'
+  export interface MessageCardContent
+  {
+    /** 卡片标题 */
+    title: string;
+    /** 卡片描述 */
+    description: string;
+    /** 点击卡片后的跳转链接，必须为 HTTPS */
+    url: string;
+    /** 卡片封面图片链接，必须为 HTTPS */
+    pic_url: string;
+  }
+  export interface MessageCard
+  {
+    /** 图文卡片类型 */
+    type: MessageCardType;
+    /** 图文卡片内容 */
+    content: MessageCardContent;
   }
   export interface Ark
   {
@@ -500,6 +520,7 @@ export namespace Message
     markdown?: Markdown;
     keyboard?: Partial<MessageKeyboard>;
     ark?: Ark;
+    card?: MessageCard;
     // image?: unknown
     message_reference?: {
       message_id: string;
