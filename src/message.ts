@@ -8,6 +8,7 @@ import { applyAutoStream, clearAutoStream, updateAutoStream } from './stream';
 import { fromPrivateChannelId, isPrivateChannelId } from './channel';
 import { registerMessageReference, resolveMessageReference } from './reference';
 import { parseQQArkElement } from './ark';
+import { parseQQCardElement } from './card';
 import { chunkedUpload } from './chunked-upload';
 import { buildSendMessage } from './send-result';
 
@@ -999,11 +1000,18 @@ export class QQMessageEncoder<C extends Context = Context> extends MessageEncode
     }
 
     const arkPayload = parseQQArkElement(element);
+    const cardPayload = parseQQCardElement(element);
     const customPayload = parseQQMarkdownElement(element);
     if (arkPayload)
     {
       await this.flush();
       this.customRequest = arkPayload.request;
+      clearAutoStream(this.options.session);
+      await this.flush();
+    } else if (cardPayload)
+    {
+      await this.flush();
+      this.customRequest = cardPayload.request;
       clearAutoStream(this.options.session);
       await this.flush();
     } else if (customPayload)
