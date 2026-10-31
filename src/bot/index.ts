@@ -258,6 +258,23 @@ export class QQBot<C extends Context = Context, T extends QQBot.Config = QQBot.C
     return { data: [await this.getChannel(guildId)] };
   }
 
+  async kickGuildMember(guildId: string, userId: string): Promise<void>
+  {
+    await this.internal.batchRemoveGroupMembers(guildId, {
+      member_openids: [userId],
+    });
+  }
+
+  async muteChannel(channelId: string, guildId?: string, enable = true): Promise<void>
+  {
+    const targetGuildId = guildId ?? channelId;
+    await this.internal.setRestrictChatSetting(targetGuildId, {
+      global_rule: {
+        mode: enable ? 'always' : 'none',
+      },
+    });
+  }
+
   async muteGuildMember(guildId: string, userId: string, duration: number, reason?: string): Promise<void>
   {
     const op = duration <= 0

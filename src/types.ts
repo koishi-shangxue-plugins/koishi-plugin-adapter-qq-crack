@@ -1770,7 +1770,8 @@ export interface SetMemberMuteState
 
 export interface SetRestrictChatSettingRequest
 {
-  members: SetMemberMuteState[];
+  global_rule?: GlobalMuteRule;
+  members?: SetMemberMuteState[];
 }
 
 export interface JoinApprovalStrategy
