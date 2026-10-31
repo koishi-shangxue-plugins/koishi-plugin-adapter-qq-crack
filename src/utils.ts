@@ -1,7 +1,7 @@
 import { Bot, Context, h, Session, Universal } from 'koishi';
 import * as QQ from './types';
 import { QQBot } from './bot';
-import { patchSessionUserName, scheduleUserNameWrite } from './user';
+import { patchSessionUserName, scheduleUserNameUpdate } from './user';
 import { toPrivateChannelId } from './channel';
 import
 {
@@ -102,6 +102,13 @@ function resolveBotOpenid(input: QQ.UserMessage, bot: QQBot)
       m.scope === 'single' && ('is_you' in m) && !!m.is_you,
   );
   return mention?.id ?? bot.selfOpenid;
+}
+
+function isSelfMention(bot: QQBot, mention: NonNullable<QQ.UserMessage['mentions']>[number])
+{
+  if (mention.scope !== 'single') return false;
+  if (mention.bot || mention.id === bot.selfId || mention.id === bot.selfOpenid || mention.id === bot.user?.id) return true;
+  return 'is_you' in mention && !!mention.is_you;
 }
 
 function extractQuotedTreeContent(text: string)
@@ -275,11 +282,11 @@ export async function decodeGroupMessage(
         }
       }
 
-      // 将 mentions 里的用户名写入数据库缓存
+      // 仅补全已有用户的名称，新建用户和绑定由统计插件负责。
       if (!bot.config.disableUserNamePersist)
         for (const mention of data.mentions)
-          if (mention.scope === 'single' && mention.username)
-            scheduleUserNameWrite(bot, mention.id, mention.username);
+          if (mention.scope === 'single' && mention.username && !isSelfMention(bot, mention))
+            scheduleUserNameUpdate(bot, mention.id, mention.username);
     }
     else { message.elements.push(h.text(data.content)); }
   }

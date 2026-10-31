@@ -182,6 +182,6 @@ export const Config: Schema<Config> = Schema.intersect([
     ])).role('checkbox').description('选择使用原生 Markdown 流式发送纯文本消息的会话类型。').default([]),
     useMarkdownIfAt: Schema.boolean().description('在包含 `<at>` 元素时使用 Markdown 格式，禁用将忽略 `<at>` 元素。').default(true),
     loggerinfo: Schema.boolean().default(false).description('调试模式').experimental(),
-    disableUserNamePersist: Schema.boolean().default(false).description('禁用将消息中的用户名写入数据库（调试用）。').experimental(),
+    disableUserNamePersist: Schema.boolean().default(false).description('禁用将消息中的用户名更新到已有用户记录（调试用）。').experimental(),
   }).description('高级设置'),
 ] as const);
