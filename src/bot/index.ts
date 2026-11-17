@@ -1,4 +1,4 @@
-import { Bot, Context, HTTP, Universal } from 'koishi';
+import { Bot, Context, HTTP, SessionError, Universal } from 'koishi';
 import { WsClient } from '../ws';
 import { QQGuildBot } from './guild';
 import { QQMessageEncoder } from '../message';
@@ -280,10 +280,14 @@ export class QQBot<C extends Context = Context, T extends QQBot.Config = QQBot.C
         const code = error?.response?.data?.code;
         if (code === 40103011)
         {
-          this.logger.warn(`群 ${guildId} 移除成员失败：机器人尚未在开放平台 WEB 管理端开启“移除群成员”权限 (code: 40103011)`);
+          const tip = `移除群成员失败：机器人尚未在开放平台 WEB 管理端开启“移除群成员”权限 (code: 40103011)`;
+          this.logger.warn(`群 ${guildId} ${tip}`);
+          throw new SessionError(`操作失败：机器人尚未在开放平台 WEB 管理端开启“移除群成员”权限 (code: 40103011)`);
         } else if (code === 40103012)
         {
-          this.logger.warn(`群 ${guildId} 移除成员失败：群主尚未在手机 QQ 群设置中授权机器人“移除群成员”权限 (code: 40103012)`);
+          const tip = `移除群成员失败：群主尚未在手机 QQ 群设置中授权机器人“移除群成员”权限 (code: 40103012)`;
+          this.logger.warn(`群 ${guildId} ${tip}`);
+          throw new SessionError(`操作失败：群主尚未在手机 QQ 群设置中授权机器人“移除群成员”权限 (code: 40103012)`);
         }
         throw error;
       }
