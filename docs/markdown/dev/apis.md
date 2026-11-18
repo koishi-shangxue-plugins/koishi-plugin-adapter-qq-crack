@@ -450,6 +450,42 @@ await bot.internal.setRestrictChatSetting(groupOpenid, {
 - `update`：更新禁言到期时间
 - `del`：解除禁言
 
+## 移出群成员
+
+适配器完整实现了腾讯 OpenAPI v2 规范的群成员移除能力，支持单人及批量操作。
+
+### `bot.kickGuildMember(guildId, userId)`
+
+移出指定群成员。
+
+```ts
+await bot.kickGuildMember(session.guildId, session.userId)
+```
+
+### `bot.kickGuildMembers(guildId, userIds)`
+
+批量移出群成员。腾讯平台单次 API 上限为 20 人，适配器内部已内置自动分批切片处理机制，调用方直接传入完整成员列表即可。
+
+```ts
+await bot.kickGuildMembers(session.guildId, ['openid_1', 'openid_2'])
+```
+
+### 内部批量接口调用
+
+```ts
+await bot.internal.batchRemoveGroupMembers(groupOpenid, {
+  member_openids: [memberOpenid],
+})
+```
+
+> **成功效果示意**：
+> 
+> ![成功移出群成员与系统通知](/images/group-manage/kick-success.png)
+
+::: tip 权限提示
+移出群成员需要同时满足“腾讯开放平台管理端已开启权限”与“手机端群主已开启机器人管理授权”。若遇到 `40103011` 或 `40103012` 错误，请参考 [常见问题 - 移除群成员权限排查](/markdown/guide/faq#移除群成员遇到-40103011-或-40103012-错误怎么办)。
+:::
+
 ## 入群申请
 
 ### 监听入群申请
