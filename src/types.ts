@@ -844,14 +844,24 @@ export interface GroupMemberList
 
 export interface BatchRemoveGroupMembersRequest
 {
+  /** 需要移除的成员 member_openid 列表，单次最多 20 个 */
   member_openids: string[];
+  /**
+   * 是否同时加入群黑名单
+   * @deprecated 官方文档 1.50.0 (2026-11-17) 已废弃并移除该参数
+   */
   add_to_member_blacklist?: boolean;
 }
 
 export interface BatchRemoveGroupMembersResponse
 {
+  /** 成功时返回 success */
   remove_members_result: string;
-  add_to_member_blacklist_fail_openids: string[];
+  /**
+   * 拉黑失败的 openid
+   * @deprecated 官方文档 1.50.0 (2026-11-17) 已废弃并移除该返回字段
+   */
+  add_to_member_blacklist_fail_openids?: string[];
 }
 
 export interface GroupMemberBlacklistUser

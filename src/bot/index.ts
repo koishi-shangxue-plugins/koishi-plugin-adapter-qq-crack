@@ -1,4 +1,4 @@
-import { Bot, Context, HTTP, Universal } from 'koishi';
+import { Bot, Context, HTTP, SessionError, Universal } from 'koishi';
 import { WsClient } from '../ws';
 import { QQGuildBot } from './guild';
 import { QQMessageEncoder } from '../message';
@@ -258,11 +258,45 @@ export class QQBot<C extends Context = Context, T extends QQBot.Config = QQBot.C
     return { data: [await this.getChannel(guildId)] };
   }
 
+  /**
+   * 批量移出群成员（腾讯单次请求上限 20 人，内部自动分批处理）
+   * @param guildId 群 OpenID
+   * @param userIds 成员 OpenID 列表
+   */
+  async kickGuildMembers(guildId: string, userIds: string[]): Promise<void>
+  {
+    if (!userIds.length) return;
+    const chunkSize = 20;
+    for (let i = 0; i < userIds.length; i += chunkSize)
+    {
+      const batch = userIds.slice(i, i + chunkSize);
+      try
+      {
+        await this.internal.batchRemoveGroupMembers(guildId, {
+          member_openids: batch,
+        });
+      } catch (error: any)
+      {
+        const code = error?.response?.data?.code;
+        if (code === 40103011)
+        {
+          const tip = `移除群成员失败：机器人尚未在开放平台 WEB 管理端开启“移除群成员”权限 (code: 40103011)`;
+          this.logger.warn(`群 ${guildId} ${tip}`);
+          throw new SessionError(`操作失败：机器人尚未在开放平台 WEB 管理端开启“移除群成员”权限 (code: 40103011)`);
+        } else if (code === 40103012)
+        {
+          const tip = `移除群成员失败：群主尚未在手机 QQ 群设置中授权机器人“移除群成员”权限 (code: 40103012)`;
+          this.logger.warn(`群 ${guildId} ${tip}`);
+          throw new SessionError(`操作失败：群主尚未在手机 QQ 群设置中授权机器人“移除群成员”权限 (code: 40103012)`);
+        }
+        throw error;
+      }
+    }
+  }
+
   async kickGuildMember(guildId: string, userId: string): Promise<void>
   {
-    await this.internal.batchRemoveGroupMembers(guildId, {
-      member_openids: [userId],
-    });
+    await this.kickGuildMembers(guildId, [userId]);
   }
 
   async muteChannel(channelId: string, guildId?: string, enable = true): Promise<void>
